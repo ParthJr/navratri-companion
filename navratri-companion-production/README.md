@@ -1,20 +1,54 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Navratri Companion — Production Application
 
-# Run and deploy your AI Studio app
+Navratri Companion is a specialized platform connecting Navratri Garba enthusiasts with verified companions and event hosts in Gujarat.
 
-This contains everything you need to run your app locally.
+## Architecture
 
-View your app in AI Studio: https://ai.studio/apps/53b19ace-8776-4277-bc1f-81bf95b63119
+- **Frontend:** React 19, Vite, Tailwind CSS, Lucide Icons
+- **Backend API:** Vercel Serverless Functions (`/api/*`)
+- **Database:** Supabase PostgreSQL with Row Level Security (RLS)
+- **Storage:** Supabase Storage (Public profile photos, private KYC documents)
+- **Authentication:** Scrypt-hashed credentials & HMAC-SHA256 session tokens with server-side authorization guards
 
-## Run Locally
+## Deployment on Vercel
 
-**Prerequisites:**  Node.js
+### Build Settings
+- **Framework Preset:** Vite
+- **Install Command:** `npm install`
+- **Build Command:** `npm run build`
+- **Output Directory:** `dist`
 
+### Environment Variables
+Configure the following in Vercel Project Settings -> Environment Variables:
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+| Variable | Description |
+| :--- | :--- |
+| `SUPABASE_URL` | Supabase Project URL |
+| `VITE_SUPABASE_URL` | Supabase Project URL for client |
+| `SUPABASE_ANON_KEY` | Supabase Public Anonymous Key |
+| `VITE_SUPABASE_ANON_KEY` | Supabase Public Anonymous Key for client |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Secret Key (Server only) |
+| `MASTER_ADMIN_PASSWORD` | Master Platform Operations Admin Password |
+| `MASTER_ADMIN_USER_ID` | Master Admin User ID (e.g. `parthjunior23`) |
+| `MASTER_ADMIN_EMAIL` | Master Admin Email (e.g. `owner@navratricompanion.com`) |
+| `AUTH_SECRET` | 64+ char secret for JWT session token signing |
+| `JWT_SECRET` | 64+ char secret for JWT session token signing |
+| `VITE_UPI_ID` | Platform registration fee receiver UPI ID (`9974203300@okbizaxis`) |
+| `VITE_UPI_NAME` | Platform receiver name (`Navratri Companion`) |
+| `NODE_ENV` | `production` |
+
+## Local Development
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment
+cp .env.example .env.local
+
+# 3. Start local development server
+npm run dev
+
+# 4. Production build check
+npm run build
+```
