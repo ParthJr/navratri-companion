@@ -1,0 +1,6 @@
+{
+  "name": "Navratri Companion",
+  "description": "Find verified Navratri companions for authentic, safe Garba nights in Ahmedabad and Gandhinagar. Public venues, ID verified, and trusted cultural celebrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
