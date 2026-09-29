@@ -1,5 +1,11 @@
 import { parseRequestBody, requireAdminAuth } from '../auth/_authUtils.ts';
-import { getUserByIdentifier, updatePayment, updateUser } from '../_db.ts';
+import {
+  getUserByIdentifier,
+  updatePayment,
+  updateUser,
+  getAllPaymentTransactions,
+  updatePaymentTransactionRecord,
+} from '../_db.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json');
@@ -47,18 +53,38 @@ export default async function handler(req: any, res: any) {
     // 1. Update Payment Record
     const updatedPayment = await updatePayment(user.userId, {
       paymentStatus: 'REJECTED',
+      status: 'PAYMENT_REJECTED',
       rejectedAt: now,
+      rejectedBy: rejectedBy,
       rejectionReason: reason,
       notes: `Rejected by ${rejectedBy} on ${now}. Reason: ${reason}`,
     });
 
-    // 2. Update User Record without deleting registration
+    // 2. Sync corresponding payment_transactions record
+    const allTxns = await getAllPaymentTransactions();
+    const matchingTxn = allTxns.find(
+      (t) =>
+        t.userId.toLowerCase() === user.userId.toLowerCase() &&
+        (t.feeCode.includes('REGISTRATION') || t.orderId === updatedPayment?.paymentReference)
+    );
+    if (matchingTxn) {
+      await updatePaymentTransactionRecord(matchingTxn.id, {
+        status: 'PAYMENT_REJECTED',
+        rejectedAt: now,
+        rejectedBy: rejectedBy,
+        rejectionReason: reason,
+        notes: `Rejected by ${rejectedBy}: ${reason}`,
+      });
+    }
+
+    // 3. Update User Record without deleting registration
     const updatedUser = await updateUser(user.userId, {
       accountStatus: 'payment_rejected',
       paymentStatus: 'rejected',
       feePaid: false,
       loginEnabled: false,
       rejectedAt: now,
+      rejectedBy: rejectedBy,
       rejectionReason: reason,
     });
 

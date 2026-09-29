@@ -43,6 +43,7 @@ export interface UserRecord {
   rejectedAt?: string | null;
   rejectionReason?: string | null;
   paymentReference?: string;
+  transactionId?: string | null;
   paymentSubmittedAt?: string;
   policyConsent?: any;
   mustChangePassword?: boolean;
@@ -91,11 +92,17 @@ export interface PaymentRecord {
   amount: number;
   paymentMethod: string;
   paymentReference: string;
-  paymentStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  transactionId?: string | null;
+  role?: string;
+  feeType?: string;
+  paymentStatus: 'PENDING' | 'PAYMENT_SUBMITTED' | 'APPROVED' | 'PAID' | 'REJECTED' | 'PAYMENT_REJECTED';
   submittedAt: string;
   approvedAt?: string | null;
   approvedBy?: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
   rejectedAt?: string | null;
+  rejectedBy?: string | null;
   rejectionReason?: string | null;
   createdAt: string;
   updatedAt?: string;
@@ -131,14 +138,21 @@ export interface PaymentTransactionRecord {
   gstAmount: number;
   totalAmount: number;
   currency: string;
-  status: 'INITIATED' | 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'WAIVED';
+  status: 'INITIATED' | 'PENDING' | 'PAYMENT_SUBMITTED' | 'PAID' | 'FAILED' | 'REFUNDED' | 'WAIVED' | 'PAYMENT_REJECTED';
   gateway: string; // 'RAZORPAY' | 'UPI_GATEWAY' | 'DIRECT_UPI' | 'ADMIN_OVERRIDE'
   orderId: string;
   paymentId: string;
   transactionId: string;
+  paymentReference?: string;
   gatewayReferenceId?: string;
   paymentMethod: string;
+  submittedAt?: string;
   paidAt?: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  rejectedAt?: string | null;
+  rejectedBy?: string | null;
+  rejectionReason?: string | null;
   waivedBy?: string | null;
   waiveReason?: string | null;
   createdAt: string;
@@ -590,6 +604,7 @@ export async function getUserByIdentifier(identifier: string): Promise<UserRecor
           selfieImage: row.selfie_image,
           policyConsent: row.policy_consent,
           paymentReference: row.payment_reference,
+          transactionId: row.transaction_id || row.transactionId || null,
           paymentSubmittedAt: row.payment_submitted_at,
           approvedAt: row.approved_at,
           approvedBy: row.approved_by,
@@ -655,6 +670,7 @@ export async function createUser(user: UserRecord): Promise<UserRecord> {
     selfie_image: user.selfieImage || '',
     policy_consent: user.policyConsent || {},
     payment_reference: user.paymentReference || '',
+    transaction_id: user.transactionId || null,
     payment_submitted_at: user.paymentSubmittedAt || null,
     created_at: user.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -711,6 +727,7 @@ export async function updateUser(userId: string, updates: Partial<UserRecord>): 
   if (updates.verificationStatus !== undefined) dbUpdates.verification_status = updates.verificationStatus;
   if (updates.profilePhoto !== undefined) dbUpdates.profile_photo = updates.profilePhoto;
   if (updates.paymentReference !== undefined) dbUpdates.payment_reference = updates.paymentReference;
+  if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId;
   if (updates.paymentSubmittedAt !== undefined) dbUpdates.payment_submitted_at = updates.paymentSubmittedAt;
   if (updates.approvedAt !== undefined) dbUpdates.approved_at = updates.approvedAt;
   if (updates.approvedBy !== undefined) dbUpdates.approved_by = updates.approvedBy;
@@ -783,11 +800,17 @@ export async function getAllPayments(): Promise<PaymentRecord[]> {
           amount: Number(row.amount) || 499,
           paymentMethod: row.payment_method || 'UPI',
           paymentReference: row.payment_reference || '',
+          transactionId: row.transaction_id || row.transactionId || null,
+          role: row.role || 'COMPANION',
+          feeType: row.fee_type || 'COMPANION_REGISTRATION',
           paymentStatus: (row.payment_status || 'PENDING').toUpperCase() as any,
           submittedAt: row.submitted_at,
           approvedAt: row.approved_at,
           approvedBy: row.approved_by,
+          verifiedAt: row.verified_at,
+          verifiedBy: row.verified_by,
           rejectedAt: row.rejected_at,
+          rejectedBy: row.rejected_by,
           rejectionReason: row.rejection_reason,
           notes: row.notes,
           createdAt: row.created_at,
@@ -823,6 +846,9 @@ export async function createPayment(payment: PaymentRecord): Promise<PaymentReco
     amount: payment.amount,
     payment_method: payment.paymentMethod || 'UPI',
     payment_reference: payment.paymentReference,
+    transaction_id: payment.transactionId || null,
+    role: payment.role || 'COMPANION',
+    fee_type: payment.feeType || 'COMPANION_REGISTRATION',
     payment_status: payment.paymentStatus.toUpperCase(),
     submitted_at: payment.submittedAt || new Date().toISOString(),
     created_at: payment.createdAt || new Date().toISOString(),
@@ -861,9 +887,15 @@ export async function updatePayment(
   if (updates.paymentStatus !== undefined) dbUpdates.payment_status = updates.paymentStatus.toUpperCase();
   if (updates.approvedAt !== undefined) dbUpdates.approved_at = updates.approvedAt;
   if (updates.approvedBy !== undefined) dbUpdates.approved_by = updates.approvedBy;
+  if (updates.verifiedAt !== undefined) dbUpdates.verified_at = updates.verifiedAt;
+  if (updates.verifiedBy !== undefined) dbUpdates.verified_by = updates.verifiedBy;
   if (updates.rejectedAt !== undefined) dbUpdates.rejected_at = updates.rejectedAt;
+  if (updates.rejectedBy !== undefined) dbUpdates.rejected_by = updates.rejectedBy;
   if (updates.rejectionReason !== undefined) dbUpdates.rejection_reason = updates.rejectionReason;
   if (updates.paymentReference !== undefined) dbUpdates.payment_reference = updates.paymentReference;
+  if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId;
+  if (updates.role !== undefined) dbUpdates.role = updates.role;
+  if (updates.feeType !== undefined) dbUpdates.fee_type = updates.feeType;
 
   if (supabase) {
     try {
@@ -1078,10 +1110,17 @@ export async function getAllPaymentTransactions(): Promise<PaymentTransactionRec
           gateway: row.gateway || 'RAZORPAY',
           orderId: row.order_id || row.id,
           paymentId: row.payment_id || '',
-          transactionId: row.transaction_id || row.payment_id || '',
+          transactionId: row.transaction_id || '',
+          paymentReference: row.payment_reference || row.order_id || '',
           gatewayReferenceId: row.gateway_reference_id,
           paymentMethod: row.payment_method || 'UPI',
+          submittedAt: row.submitted_at || row.created_at,
           paidAt: row.paid_at,
+          verifiedAt: row.verified_at,
+          verifiedBy: row.verified_by,
+          rejectedAt: row.rejected_at,
+          rejectedBy: row.rejected_by,
+          rejectionReason: row.rejection_reason,
           waivedBy: row.waived_by,
           waiveReason: row.waive_reason,
           createdAt: row.created_at,
@@ -1111,7 +1150,9 @@ export async function getAllPaymentTransactions(): Promise<PaymentTransactionRec
     const txnId = `txn_${p.id}`;
     if (!combined.has(txnId) && !combined.has(p.id)) {
       const user = storeMemory.users[p.userId.toLowerCase()];
-      const isApproved = p.paymentStatus === 'APPROVED';
+      const isApproved = p.paymentStatus === 'APPROVED' || p.paymentStatus === 'PAID';
+      const isRejected = p.paymentStatus === 'REJECTED' || p.paymentStatus === 'PAYMENT_REJECTED';
+      const isSubmitted = p.paymentStatus === 'PAYMENT_SUBMITTED';
       combined.set(p.id, {
         id: p.id,
         userId: p.userId,
@@ -1125,13 +1166,20 @@ export async function getAllPaymentTransactions(): Promise<PaymentTransactionRec
         gstAmount: 0,
         totalAmount: p.amount || 499,
         currency: 'INR',
-        status: isApproved ? 'PAID' : p.paymentStatus === 'REJECTED' ? 'FAILED' : 'PENDING',
-        gateway: 'RAZORPAY',
-        orderId: `order_${p.id}`,
+        status: isApproved ? 'PAID' : isRejected ? 'PAYMENT_REJECTED' : isSubmitted ? 'PAYMENT_SUBMITTED' : 'PENDING',
+        gateway: 'DIRECT_UPI',
+        orderId: p.paymentReference || `order_${p.id}`,
         paymentId: p.paymentReference || '',
-        transactionId: p.paymentReference || p.id,
+        transactionId: p.transactionId || '',
+        paymentReference: p.paymentReference || '',
         paymentMethod: p.paymentMethod || 'UPI',
+        submittedAt: p.submittedAt || p.createdAt,
         paidAt: isApproved ? (p.approvedAt || p.submittedAt) : null,
+        verifiedAt: p.verifiedAt || (isApproved ? p.approvedAt : null),
+        verifiedBy: p.verifiedBy || (isApproved ? p.approvedBy : null),
+        rejectedAt: p.rejectedAt,
+        rejectedBy: p.rejectedBy,
+        rejectionReason: p.rejectionReason,
         createdAt: p.createdAt || p.submittedAt,
         updatedAt: p.updatedAt || p.submittedAt,
         notes: p.notes,
@@ -1178,9 +1226,16 @@ export async function createPaymentTransactionRecord(
           order_id: record.orderId,
           payment_id: record.paymentId,
           transaction_id: record.transactionId,
+          payment_reference: record.paymentReference,
           gateway_reference_id: record.gatewayReferenceId,
           payment_method: record.paymentMethod,
+          submitted_at: record.submittedAt,
           paid_at: record.paidAt,
+          verified_at: record.verifiedAt,
+          verified_by: record.verifiedBy,
+          rejected_at: record.rejectedAt,
+          rejected_by: record.rejectedBy,
+          rejection_reason: record.rejectionReason,
           waived_by: record.waivedBy,
           waive_reason: record.waiveReason,
           created_at: record.createdAt,
@@ -1205,10 +1260,18 @@ export async function createPaymentTransactionRecord(
       userId: record.userId,
       amount: record.totalAmount,
       paymentMethod: record.paymentMethod,
-      paymentReference: record.transactionId || record.paymentId || record.orderId,
-      paymentStatus: record.status === 'PAID' ? 'APPROVED' : record.status === 'FAILED' ? 'REJECTED' : 'PENDING',
-      submittedAt: record.createdAt,
+      paymentReference: record.paymentReference || record.orderId,
+      transactionId: record.transactionId,
+      role: record.userRole,
+      feeType: record.feeCode,
+      paymentStatus: record.status === 'PAID' ? 'APPROVED' : record.status === 'PAYMENT_REJECTED' || record.status === 'FAILED' ? 'REJECTED' : record.status === 'PAYMENT_SUBMITTED' ? 'PAYMENT_SUBMITTED' : 'PENDING',
+      submittedAt: record.submittedAt || record.createdAt,
       approvedAt: record.paidAt,
+      verifiedAt: record.verifiedAt,
+      verifiedBy: record.verifiedBy,
+      rejectedAt: record.rejectedAt,
+      rejectedBy: record.rejectedBy,
+      rejectionReason: record.rejectionReason,
       createdAt: record.createdAt,
       updatedAt: now,
       notes: record.notes || `Gateway: ${record.gateway} | Txn: ${record.transactionId}`,
@@ -1242,6 +1305,7 @@ export async function updatePaymentTransactionRecord(
       orderId: orderIdOrId,
       paymentId: '',
       transactionId: '',
+      paymentReference: '',
       paymentMethod: 'UPI',
       createdAt: now,
       updatedAt: now,
@@ -1259,9 +1323,16 @@ export async function updatePaymentTransactionRecord(
           status: updated.status,
           payment_id: updated.paymentId,
           transaction_id: updated.transactionId,
+          payment_reference: updated.paymentReference,
           gateway_reference_id: updated.gatewayReferenceId,
           payment_method: updated.paymentMethod,
+          submitted_at: updated.submittedAt,
           paid_at: updated.paidAt,
+          verified_at: updated.verifiedAt,
+          verified_by: updated.verifiedBy,
+          rejected_at: updated.rejectedAt,
+          rejected_by: updated.rejectedBy,
+          rejection_reason: updated.rejectionReason,
           waived_by: updated.waivedBy,
           waive_reason: updated.waiveReason,
           updated_at: now,
@@ -1282,13 +1353,62 @@ export async function updatePaymentTransactionRecord(
   // Backward compatibility with registration_payments
   if (updated.feeCode.includes('REGISTRATION')) {
     await updatePayment(updated.userId, {
-      paymentStatus: updated.status === 'PAID' ? 'APPROVED' : updated.status === 'FAILED' ? 'REJECTED' : 'PENDING',
+      paymentStatus: updated.status === 'PAID' ? 'APPROVED' : (updated.status === 'FAILED' || updated.status === 'PAYMENT_REJECTED') ? 'REJECTED' : updated.status === 'PAYMENT_SUBMITTED' ? 'PAYMENT_SUBMITTED' : 'PENDING',
       approvedAt: updated.paidAt,
-      paymentReference: updated.transactionId || updated.paymentId,
+      verifiedAt: updated.verifiedAt,
+      verifiedBy: updated.verifiedBy,
+      rejectedAt: updated.rejectedAt,
+      rejectedBy: updated.rejectedBy,
+      rejectionReason: updated.rejectionReason,
+      paymentReference: updated.paymentReference,
+      transactionId: updated.transactionId,
     });
   }
 
   return updated;
+}
+
+/**
+ * Check if a Transaction ID / UTR has already been verified for another user
+ */
+export async function isTransactionIdAlreadyVerified(
+  transactionId: string,
+  excludeUserId?: string
+): Promise<boolean> {
+  if (!transactionId) return false;
+  const clean = transactionId.trim().toLowerCase();
+  if (!clean) return false;
+
+  const [allPayments, allTxns] = await Promise.all([
+    getAllPayments(),
+    getAllPaymentTransactions(),
+  ]);
+
+  // Check in registration_payments (approved / paid)
+  for (const p of allPayments) {
+    if (excludeUserId && p.userId.toLowerCase() === excludeUserId.toLowerCase()) continue;
+    const pStatus = (p.paymentStatus || '').toUpperCase();
+    if (pStatus === 'APPROVED' || pStatus === 'PAID') {
+      const pTxnId = (p.transactionId || '').trim().toLowerCase();
+      if (pTxnId && pTxnId === clean) {
+        return true;
+      }
+    }
+  }
+
+  // Check in payment_transactions (paid)
+  for (const t of allTxns) {
+    if (excludeUserId && t.userId.toLowerCase() === excludeUserId.toLowerCase()) continue;
+    const tStatus = (t.status || '').toUpperCase();
+    if (tStatus === 'PAID') {
+      const tTxnId = (t.transactionId || '').trim().toLowerCase();
+      if (tTxnId && tTxnId === clean) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 export async function getTransactionByOrderId(orderId: string): Promise<PaymentTransactionRecord | null> {

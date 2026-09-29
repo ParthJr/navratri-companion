@@ -657,42 +657,76 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
     }
   };
 
-  // Handle Registration Fee Payment Submission -> Verifies & Records Transaction ID
+  // Handle Registration Fee Payment Submission -> Submits Transaction ID for Super Admin verification
   const handleRegPaymentConfirm = async () => {
     if (!pendingAccount) return;
+
+    // Strict Validation on submit
+    const cleanTxnId = (enteredTxnId || '').trim();
+    if (!cleanTxnId || cleanTxnId.length < 6 || /[<>{}]/.test(cleanTxnId)) {
+      setErrorMessage('Please enter a valid Transaction ID / UTR number from your payment app.');
+      return;
+    }
+
+    const paymentRef =
+      orderDetails?.orderId ||
+      pendingAccount.paymentReference ||
+      generatePaymentReference(pendingAccount.userId, 'REG');
+
+    // Prevent submitting the system payment reference as the bank UTR
+    if (cleanTxnId.toLowerCase() === paymentRef.toLowerCase()) {
+      setErrorMessage(
+        'Please enter the actual UPI transaction ID / UTR number from your payment app, not the system payment reference.'
+      );
+      return;
+    }
+
     setLoading(true);
     setErrorMessage(null);
 
-    const fallbackRef = generatePaymentReference(pendingAccount.userId, 'REG');
-    const finalTxnId = (enteredTxnId || '').trim() || fallbackRef;
-    const finalAmount = orderDetails?.amount ?? (pendingAccount.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee) ?? 499;
+    const finalAmount =
+      orderDetails?.amount ??
+      (pendingAccount.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee) ??
+      499;
+    const feeCode =
+      pendingAccount.role === 'companion' ? 'COMPANION_REGISTRATION' : 'CUSTOMER_REGISTRATION';
 
     try {
-      if (orderDetails?.orderId) {
-        const verifyRes = await verifyPaymentInDb({
-          orderId: orderDetails.orderId,
-          transactionId: finalTxnId,
-          paymentId: finalTxnId,
-          paymentMethod: 'UPI',
-          userId: pendingAccount.userId,
-        });
-
-        if (!verifyRes.success) {
-          setLoading(false);
-          setErrorMessage(verifyRes.errorMessage || 'Payment verification failed. Please check transaction ID and try again.');
-          return;
-        }
-      }
-
-      // Record in registration_payments for legacy sync
-      await submitRegistrationPaymentToDb(pendingAccount.userId, finalTxnId, finalAmount, 'UPI');
+      const submitRes = await submitRegistrationPaymentToDb(
+        pendingAccount.userId,
+        paymentRef,
+        cleanTxnId,
+        finalAmount,
+        'UPI',
+        pendingAccount.role,
+        feeCode
+      );
 
       setLoading(false);
+
+      if (!submitRes.success) {
+        if (
+          submitRes.errorMessage &&
+          (submitRes.errorMessage.toLowerCase().includes('already used') ||
+            submitRes.errorMessage.toLowerCase().includes('already submitted'))
+        ) {
+          setErrorMessage(
+            'This Transaction ID has already been submitted. Please check and enter the correct ID.'
+          );
+        } else {
+          setErrorMessage(
+            submitRes.errorMessage || 'Failed to submit payment reference. Please try again.'
+          );
+        }
+        return;
+      }
+
+      // Success: Switched to login mode with message explaining Super Admin review
       setMode('login');
       setLoginIdentifier(pendingAccount.userId);
       setLoginPassword('');
       setSuccessBanner(
-        `Registration fee submitted (Txn ID: ${finalTxnId}). Verification recorded. Please log in.`
+        `Payment submitted (Transaction ID: ${cleanTxnId}). Super Admin verification is required. Your account will be activated once approved.`
       );
       setPendingAccount(null);
       setOrderDetails(null);
@@ -751,9 +785,37 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
 
           {/* Error Message */}
           {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2 animate-in fade-in duration-150">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span className="break-words">{errorMessage}</span>
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-2 animate-in fade-in duration-150">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span className="break-words font-medium">{errorMessage}</span>
+              </div>
+              {mode === 'login' &&
+                (errorMessage.toLowerCase().includes('rejected') ||
+                  errorMessage.toLowerCase().includes('pending')) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = loginIdentifier.trim();
+                      if (!id) return;
+                      setPendingAccount({
+                        name: id,
+                        phone: '',
+                        email: '',
+                        userId: id,
+                        password: loginPassword,
+                        role: 'companion',
+                        city: 'Ahmedabad',
+                      });
+                      setMode('reg_payment');
+                      setErrorMessage(null);
+                    }}
+                    className="mt-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-[11px] transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Re-enter / Submit Payment Transaction ID</span>
+                  </button>
+                )}
             </div>
           )}
 
@@ -1374,15 +1436,13 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                     <span>Total Amount Payable:</span>
                     <span className="text-sm text-[#9b4500]">₹{orderDetails?.amount ?? (pendingAccount.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee)}</span>
                   </div>
-                  {orderDetails?.orderId && (
-                    <div className="text-[10px] text-slate-500 font-mono pt-0.5 truncate">
-                      Order ID: {orderDetails.orderId}
-                    </div>
-                  )}
+                  <div className="text-[10px] text-slate-500 font-mono pt-0.5 truncate">
+                    Payment Reference: {orderDetails?.orderId || pendingAccount.paymentReference || 'REG-PAY'}
+                  </div>
                 </div>
               </div>
 
-              {/* Dynamic UPI QR Container */}
+              {/* Dynamic UPI QR Container (Includes single Official UPI ID and copyable payment reference) */}
               <div className="flex flex-col items-center justify-center p-3 sm:p-4 bg-slate-50 border border-[#cec3ce]/40 rounded-2xl text-center">
                 <DynamicUpiQr
                   upiId={getPlatformUpiConfig().upiId}
@@ -1391,43 +1451,36 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                   paymentReference={orderDetails?.orderId || pendingAccount.paymentReference || 'REG-PAY'}
                   purposeLabel={`${pendingAccount.role === 'companion' ? 'Companion' : 'User'} Registration Fee`}
                 />
-
-                <div className="space-y-1 w-full max-w-xs mt-2">
-                  <div className="text-xs font-mono font-bold text-[#311042] bg-white px-3 py-1.5 rounded-lg border border-[#cec3ce]/30 flex items-center justify-between gap-1 overflow-hidden">
-                    <span className="truncate">{getPlatformUpiConfig().upiId}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(getPlatformUpiConfig().upiId);
-                        setCopiedUpi(true);
-                        setTimeout(() => setCopiedUpi(false), 2000);
-                      }}
-                      className="text-[11px] text-[#9b4500] hover:underline font-sans shrink-0 cursor-pointer ml-1"
-                    >
-                      {copiedUpi ? 'Copied!' : 'Copy UPI'}
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-[#596579]">
-                    Payee: {getPlatformUpiConfig().payeeName}
-                  </p>
-                </div>
               </div>
 
-              {/* UTR / Transaction ID input */}
-              <div className="space-y-1.5 text-left">
-                <label className="block text-xs font-semibold text-[#12001f]">
-                  UPI Transaction ID / UTR / Reference ID
-                </label>
-                <input
-                  type="text"
-                  value={enteredTxnId}
-                  onChange={(e) => setEnteredTxnId(e.target.value)}
-                  placeholder="e.g. 428912345678 or UPI Ref"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-[#cec3ce]/60 rounded-xl text-xs font-mono text-[#12001f] focus:outline-none focus:ring-2 focus:ring-[#9b4500]"
-                />
-                <p className="text-[10px] text-[#596579]">
-                  Enter the transaction ID or 12-digit UTR from your payment receipt for instant verification.
+              {/* 🔐 TRANSACTION ID / UTR FIELD directly above "I Have Completed Payment" */}
+              <div className="p-4 bg-[#fbf9fe] border-2 border-[#9b4500]/30 rounded-2xl space-y-2 text-left shadow-xs">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#311042] uppercase tracking-wide">
+                  <span role="img" aria-label="lock">🔐</span>
+                  <span>TRANSACTION ID / UTR</span>
+                  <span className="text-rose-500 text-xs font-normal ml-0.5">*Required</span>
+                </div>
+                <p className="text-[11px] text-[#596579] leading-snug">
+                  Enter the UPI transaction ID / UTR number from your payment app after completing the payment.
                 </p>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    maxLength={64}
+                    value={enteredTxnId}
+                    onChange={(e) => {
+                      setEnteredTxnId(e.target.value);
+                      if (errorMessage) setErrorMessage(null);
+                    }}
+                    placeholder="Enter Transaction ID / UTR"
+                    className="w-full px-3.5 py-2.5 bg-white border border-[#cec3ce] rounded-xl text-xs font-mono font-medium text-[#12001f] placeholder:font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#9b4500] focus:border-transparent transition-all"
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                  <span>Example: 427819364829 or UPI Ref ID</span>
+                  <span>{enteredTxnId.trim().length}/64</span>
+                </div>
               </div>
 
               {/* Payment Confirmation Button */}
@@ -1435,15 +1488,15 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                 <button
                   type="button"
                   onClick={handleRegPaymentConfirm}
-                  disabled={loading}
-                  className="w-full min-h-[46px] bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-xs disabled:opacity-60 cursor-pointer text-sm"
+                  disabled={loading || !enteredTxnId.trim()}
+                  className="w-full min-h-[46px] bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>{loading ? 'Verifying Payment...' : 'I Have Completed Payment'}</span>
+                  <span>{loading ? 'Submitting Payment...' : 'I Have Completed Payment'}</span>
                 </button>
 
-                <p className="text-[11px] text-center text-[#596579]">
-                  After clicking, your transaction is verified and registered on the secure platform.
+                <p className="text-[11px] text-center text-[#596579] leading-relaxed">
+                  After submission, your Transaction ID / UTR will be verified by Super Admin before account activation.
                 </p>
               </div>
             </div>

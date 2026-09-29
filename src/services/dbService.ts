@@ -37,6 +37,7 @@ export interface DbUser {
   approvedBy?: string | null;
   rejectionReason?: string | null;
   paymentReference?: string;
+  transactionId?: string | null;
   paymentSubmittedAt?: string;
   policyConsent?: any;
   mustChangePassword?: boolean;
@@ -58,6 +59,9 @@ export interface DbPaymentApprovalRequest {
   city: string;
   amount: number;
   paymentReference: string;
+  transactionId?: string;
+  paymentMethod?: string;
+  feeType?: string;
   submittedAt: string;
   approvedAt?: string | null;
   approvedBy?: string | null;
@@ -139,19 +143,22 @@ export async function registerUserInDb(userData: {
 }
 
 /**
- * Submit registration fee payment reference to the central database
+ * Submit registration fee payment reference & transaction ID to the central database
  */
 export async function submitRegistrationPaymentToDb(
   userId: string,
   paymentReference: string,
+  transactionId: string,
   amount: number = 499,
-  paymentMethod: string = 'UPI'
+  paymentMethod: string = 'UPI',
+  role?: string,
+  feeType?: string
 ): Promise<{ success: boolean; message?: string; errorMessage?: string }> {
   try {
     const res = await fetch('/api/payments/submit-registration', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, paymentReference, amount, paymentMethod }),
+      body: JSON.stringify({ userId, paymentReference, transactionId, amount, paymentMethod, role, feeType }),
     });
 
     const data = await res.json();

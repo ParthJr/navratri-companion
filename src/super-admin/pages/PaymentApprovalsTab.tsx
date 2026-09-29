@@ -36,7 +36,8 @@ export const PaymentApprovalsTab: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionReasonType, setRejectionReasonType] = useState('Transaction ID not found');
+  const [customRejectionReason, setCustomRejectionReason] = useState('');
   const [actionToast, setActionToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Load from Central Database
@@ -79,6 +80,8 @@ export const PaymentApprovalsTab: React.FC = () => {
       city: req.city || 'Ahmedabad',
       amount: req.amount || registrationFeeConfig.amount || 499,
       paymentReference: req.paymentReference || 'Submitted (Pending Ref)',
+      transactionId: req.transactionId || '—',
+      paymentMethod: req.paymentMethod || 'UPI',
       submittedAt: req.submittedAt || 'Recently',
       confirmedAt: req.approvedAt,
       rejectedAt: req.rejectedAt,
@@ -96,7 +99,8 @@ export const PaymentApprovalsTab: React.FC = () => {
       req.name.toLowerCase().includes(search.toLowerCase()) ||
       req.email.toLowerCase().includes(search.toLowerCase()) ||
       req.phone.includes(search) ||
-      req.paymentReference.toLowerCase().includes(search.toLowerCase());
+      req.paymentReference.toLowerCase().includes(search.toLowerCase()) ||
+      (req.transactionId && req.transactionId.toLowerCase().includes(search.toLowerCase()));
 
     const matchesStatus =
       statusFilter === 'all' ||
@@ -141,17 +145,22 @@ export const PaymentApprovalsTab: React.FC = () => {
 
   const handleOpenRejectModal = (userId: string) => {
     setRejectingUserId(userId);
-    setRejectionReason('Invalid payment reference / Transaction not found in bank statement');
+    setRejectionReasonType('Transaction ID not found');
+    setCustomRejectionReason('');
   };
 
   const handleConfirmReject = async () => {
     if (!rejectingUserId) return;
     try {
+      const finalReason =
+        rejectionReasonType === 'Other'
+          ? (customRejectionReason.trim() || 'Payment rejected by Super Admin')
+          : rejectionReasonType;
       const adminName = currentAdmin?.name || currentAdmin?.adminId || 'Master Admin';
-      const res = await rejectPaymentInDb(rejectingUserId, rejectionReason, adminName);
+      const res = await rejectPaymentInDb(rejectingUserId, finalReason, adminName);
       
       // Update local context
-      rejectUserPayment(rejectingUserId, rejectionReason);
+      rejectUserPayment(rejectingUserId, finalReason);
 
       if (res.success) {
         setActionToast({
@@ -166,7 +175,7 @@ export const PaymentApprovalsTab: React.FC = () => {
       }
 
       setRejectingUserId(null);
-      setRejectionReason('');
+      setCustomRejectionReason('');
       await loadApprovals(true);
       setTimeout(() => setActionToast(null), 5000);
     } catch (err: any) {
@@ -286,6 +295,7 @@ export const PaymentApprovalsTab: React.FC = () => {
                 <th className="py-3.5 px-4">Contact Info</th>
                 <th className="py-3.5 px-4 text-right">Amount</th>
                 <th className="py-3.5 px-4">Payment Reference</th>
+                <th className="py-3.5 px-4">Transaction ID / UTR</th>
                 <th className="py-3.5 px-4">Submission Date</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4 text-center">Action</th>
@@ -294,7 +304,7 @@ export const PaymentApprovalsTab: React.FC = () => {
             <tbody className="divide-y divide-white/5">
               {loading && allApprovalRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400 text-xs">
+                  <td colSpan={8} className="text-center py-12 text-slate-400 text-xs">
                     <div className="flex items-center justify-center gap-2">
                       <RefreshCw className="w-4 h-4 animate-spin text-[#fd8a42]" />
                       <span>Loading registration payments from database...</span>
@@ -303,7 +313,7 @@ export const PaymentApprovalsTab: React.FC = () => {
                 </tr>
               ) : filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-500 text-xs font-medium">
+                  <td colSpan={8} className="text-center py-12 text-slate-500 text-xs font-medium">
                     {allApprovalRequests.length === 0
                       ? 'No registration payments found in database. Once a user signs up and submits payment on their device, it will appear here instantly.'
                       : 'No payment approval requests found matching your filter.'}
@@ -352,6 +362,17 @@ export const PaymentApprovalsTab: React.FC = () => {
                       <span className="font-mono bg-[#201033] px-2.5 py-1 rounded-md text-[11px] text-purple-300 border border-purple-500/20">
                         {req.paymentReference}
                       </span>
+                    </td>
+
+                    {/* Transaction ID / UTR */}
+                    <td className="py-3.5 px-4 font-mono">
+                      {req.transactionId && req.transactionId !== '—' ? (
+                        <span className="bg-[#201033] px-2.5 py-1 rounded-md text-[11px] text-[#fd8a42] font-bold border border-[#fd8a42]/30">
+                          {req.transactionId}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-[11px] italic">Not Entered</span>
+                      )}
                     </td>
 
                     {/* Submission Date */}
@@ -439,19 +460,38 @@ export const PaymentApprovalsTab: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300">
-              Rejecting payment for User ID <strong className="text-white">@{rejectingUserId}</strong> will keep their account inactive and prevent them from logging in.
+              Rejecting payment for User ID <strong className="text-white">@{rejectingUserId}</strong> will keep their account inactive and prompt them to re-enter their Transaction ID / UTR.
             </p>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] text-slate-400 font-semibold">Rejection Reason for User & Audit Log:</label>
-              <textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                rows={3}
-                className="w-full bg-[#201033] border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-500 placeholder-slate-500"
-                placeholder="Specify reason (e.g. Invalid UTR reference number or payment not received)..."
-              />
+              <label className="text-[11px] text-slate-400 font-semibold">Select Rejection Reason:</label>
+              <select
+                value={rejectionReasonType}
+                onChange={(e) => setRejectionReasonType(e.target.value)}
+                className="w-full bg-[#201033] border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+              >
+                <option value="Transaction ID not found">Transaction ID not found</option>
+                <option value="Incorrect amount">Incorrect amount</option>
+                <option value="Duplicate transaction">Duplicate transaction</option>
+                <option value="Payment not received">Payment not received</option>
+                <option value="Invalid UTR">Invalid UTR</option>
+                <option value="Other">Other (with text input)</option>
+              </select>
             </div>
+
+            {rejectionReasonType === 'Other' && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-slate-400 font-semibold">Custom Rejection Reason:</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={customRejectionReason}
+                  onChange={(e) => setCustomRejectionReason(e.target.value)}
+                  placeholder="Specify why payment is rejected..."
+                  className="w-full bg-[#201033] border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-500 placeholder-slate-500"
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button

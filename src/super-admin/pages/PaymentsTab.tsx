@@ -22,6 +22,8 @@ import { useSuperAdmin } from '../context/SuperAdminContext';
 import {
   fetchPaymentTransactionsFromDb,
   waiveUserFeeInDb,
+  approvePaymentInDb,
+  rejectPaymentInDb,
   PaymentTransactionRecord,
 } from '../../services/dbService';
 
@@ -34,6 +36,11 @@ export const PaymentsTab: React.FC = () => {
   const [waivingTx, setWaivingTx] = useState<PaymentTransactionRecord | null>(null);
   const [waiveReason, setWaiveReason] = useState('Super Admin authorized promotion / verification waiver');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  // Rejection Modal State
+  const [rejectingTx, setRejectingTx] = useState<PaymentTransactionRecord | null>(null);
+  const [rejectionReasonType, setRejectionReasonType] = useState('Transaction ID not found');
+  const [customRejectionReason, setCustomRejectionReason] = useState('');
 
   // Filters
   const [search, setSearch] = useState('');
@@ -58,6 +65,55 @@ export const PaymentsTab: React.FC = () => {
   useEffect(() => {
     loadTransactions();
   }, []);
+
+  const handleVerifyPayment = async (tx: PaymentTransactionRecord) => {
+    try {
+      const adminName = currentAdmin?.name || currentAdmin?.adminId || 'Super Admin';
+      const res = await approvePaymentInDb(tx.userId, adminName);
+      if (res.success) {
+        setActionNotice(`Payment verified & account activated for @${tx.userId}`);
+        setTimeout(() => setActionNotice(null), 5000);
+        if (selectedTx?.userId === tx.userId) setSelectedTx(null);
+        await loadTransactions();
+      } else {
+        alert(res.errorMessage || 'Failed to verify payment.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error verifying payment.');
+    }
+  };
+
+  const handleOpenReject = (tx: PaymentTransactionRecord) => {
+    setRejectingTx(tx);
+    setRejectionReasonType('Transaction ID not found');
+    setCustomRejectionReason('');
+  };
+
+  const handleRejectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectingTx) return;
+
+    const finalReason =
+      rejectionReasonType === 'Other'
+        ? (customRejectionReason.trim() || 'Payment rejected by Super Admin')
+        : rejectionReasonType;
+
+    try {
+      const adminName = currentAdmin?.name || currentAdmin?.adminId || 'Super Admin';
+      const res = await rejectPaymentInDb(rejectingTx.userId, finalReason, adminName);
+      if (res.success) {
+        setActionNotice(`Payment rejected for @${rejectingTx.userId}. Reason: ${finalReason}`);
+        setTimeout(() => setActionNotice(null), 5000);
+        setRejectingTx(null);
+        if (selectedTx?.userId === rejectingTx.userId) setSelectedTx(null);
+        await loadTransactions();
+      } else {
+        alert(res.errorMessage || 'Failed to reject payment.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error rejecting payment.');
+    }
+  };
 
   // Merge database transactions with context payments if db transactions are empty
   const allTransactions: PaymentTransactionRecord[] =
@@ -267,42 +323,29 @@ export const PaymentsTab: React.FC = () => {
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-[#1f1035] text-slate-400 uppercase text-[10px] tracking-wider font-bold border-b border-white/10">
               <tr>
-                <th className="py-3.5 px-4">Transaction ID</th>
                 <th className="py-3.5 px-4">User</th>
                 <th className="py-3.5 px-4">Role</th>
-                <th className="py-3.5 px-4">Fee Type</th>
                 <th className="py-3.5 px-4">Amount</th>
-                <th className="py-3.5 px-4">Payment Method</th>
+                <th className="py-3.5 px-4">Payment Reference</th>
+                <th className="py-3.5 px-4">Transaction ID / UTR</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4">Date</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
+                <th className="py-3.5 px-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-10 text-slate-500 font-medium">
+                  <td colSpan={8} className="text-center py-10 text-slate-500 font-medium">
                     {loading ? 'Loading payment transactions...' : 'No transactions found matching current filter.'}
                   </td>
                 </tr>
               ) : (
                 filtered.map((tx) => (
-                  <tr key={tx.id || tx.transactionId} className="hover:bg-white/[0.02] transition-colors">
-                    {/* Transaction ID */}
-                    <td className="py-3.5 px-4 font-mono font-bold text-white whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[#fd8a42]">{tx.transactionId || tx.id}</span>
-                      </div>
-                      {tx.orderId && (
-                        <div className="text-[10px] text-slate-500 font-normal">
-                          {tx.orderId}
-                        </div>
-                      )}
-                    </td>
-
+                  <tr key={tx.id || tx.transactionId || tx.userId} className="hover:bg-white/[0.02] transition-colors">
                     {/* User */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="font-semibold text-white">{tx.userName}</div>
+                      <div className="font-semibold text-white">{tx.userName || tx.userId}</div>
                       <div className="text-[10px] text-slate-400">
                         {tx.userPhone || tx.userEmail || `@${tx.userId}`}
                       </div>
@@ -311,20 +354,14 @@ export const PaymentsTab: React.FC = () => {
                     {/* Role */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          tx.userRole === 'COMPANION'
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          (tx.userRole || '').toUpperCase() === 'COMPANION'
                             ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
                             : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/30'
                         }`}
                       >
-                        {tx.userRole}
+                        {(tx.userRole || 'CUSTOMER').toUpperCase()}
                       </span>
-                    </td>
-
-                    {/* Fee Type */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="text-white font-medium">{tx.feeName || tx.feeCode}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{tx.feeCode}</div>
                     </td>
 
                     {/* Amount */}
@@ -339,24 +376,38 @@ export const PaymentsTab: React.FC = () => {
                       )}
                     </td>
 
-                    {/* Payment Method / Gateway */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="text-white font-medium">{tx.paymentMethod || 'UPI'}</div>
-                      <div className="text-[10px] text-slate-500">{tx.gateway || 'RAZORPAY'}</div>
+                    {/* Payment Reference */}
+                    <td className="py-3.5 px-4 whitespace-nowrap font-mono">
+                      <span className="text-purple-300 bg-[#201033] px-2.5 py-1 rounded-md border border-purple-500/20 text-[11px]">
+                        {tx.orderId || tx.paymentReference || '—'}
+                      </span>
+                    </td>
+
+                    {/* Transaction ID / UTR */}
+                    <td className="py-3.5 px-4 whitespace-nowrap font-mono">
+                      {tx.transactionId ? (
+                        <span className="text-[#fd8a42] bg-[#201033] px-2.5 py-1 rounded-md border border-[#fd8a42]/30 text-[11px] font-bold">
+                          {tx.transactionId}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-[11px] italic">Not Entered</span>
+                      )}
                     </td>
 
                     {/* Status */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
                           tx.status === 'PAID'
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                            : tx.status === 'PAYMENT_SUBMITTED'
+                            ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30 animate-pulse'
+                            : tx.status === 'PAYMENT_REJECTED' || tx.status === 'FAILED'
+                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
                             : tx.status === 'WAIVED'
                             ? 'bg-blue-500/10 text-blue-300 border border-blue-500/30'
                             : tx.status === 'REFUNDED'
                             ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30'
-                            : tx.status === 'FAILED'
-                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
                             : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
                         }`}
                       >
@@ -375,7 +426,7 @@ export const PaymentsTab: React.FC = () => {
                       })}
                     </td>
 
-                    {/* Actions */}
+                    {/* Action */}
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
@@ -384,8 +435,33 @@ export const PaymentsTab: React.FC = () => {
                           className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          <span>Details</span>
+                          <span>View</span>
                         </button>
+
+                        {tx.status !== 'PAID' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyPayment(tx)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+                              title="Verify Payment & Activate Account"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>✓ Verify Payment</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReject(tx)}
+                              className="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Reject Payment"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>✕ Reject Payment</span>
+                            </button>
+                          </>
+                        )}
+
                         {tx.status === 'PENDING' && (
                           <button
                             type="button"
@@ -430,45 +506,57 @@ export const PaymentsTab: React.FC = () => {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Transaction ID</span>
-                  <span className="font-mono font-bold text-[#fd8a42]">{selectedTx.transactionId || selectedTx.id}</span>
+              {/* User details */}
+              <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">User Details</span>
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-white text-sm">{selectedTx.userName || selectedTx.userId}</span>
+                  <span className="font-bold text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded text-[10px] border border-purple-500/30">
+                    {(selectedTx.userRole || 'CUSTOMER').toUpperCase()}
+                  </span>
                 </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Gateway Order ID</span>
-                  <span className="font-mono text-slate-300">{selectedTx.orderId || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Gateway Payment ID</span>
-                  <span className="font-mono text-slate-300">{selectedTx.paymentId || 'N/A'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Payment Gateway</span>
-                  <span className="font-bold text-white">{selectedTx.gateway || 'RAZORPAY'}</span>
+                <div className="text-slate-400 text-[11px]">
+                  User ID: <span className="font-mono text-[#fd8a42]">@{selectedTx.userId}</span>
+                  {selectedTx.userEmail && <span> • {selectedTx.userEmail}</span>}
+                  {selectedTx.userPhone && <span> • {selectedTx.userPhone}</span>}
                 </div>
               </div>
 
+              {/* Payment References & Identifiers */}
               <div className="grid grid-cols-2 gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">User / Customer</span>
-                  <span className="font-semibold text-white">{selectedTx.userName}</span>
-                  <span className="text-[10px] text-slate-400 block">@{selectedTx.userId}</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Payment Reference</span>
+                  <span className="font-mono text-purple-300 text-xs font-bold break-all">
+                    {selectedTx.orderId || selectedTx.paymentReference || 'N/A'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">User Role</span>
-                  <span className="font-bold text-purple-300">{selectedTx.userRole}</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Transaction ID / UTR</span>
+                  <span className="font-mono font-bold text-[#fd8a42] text-xs break-all">
+                    {selectedTx.transactionId || 'Not Entered'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Fee Type</span>
-                  <span className="font-semibold text-white">{selectedTx.feeName}</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Fee Type</span>
+                  <span className="font-semibold text-white">{selectedTx.feeName || selectedTx.feeCode}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Status</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Payment Method</span>
+                  <span className="font-bold text-white">{selectedTx.paymentMethod || 'UPI'} ({selectedTx.gateway || 'MANUAL'})</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Status</span>
                   <span className="font-bold text-emerald-400 uppercase">{selectedTx.status}</span>
                 </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Submitted / Paid Date</span>
+                  <span className="text-slate-300 text-[11px]">
+                    {new Date(selectedTx.paidAt || selectedTx.createdAt).toLocaleString('en-IN')}
+                  </span>
+                </div>
               </div>
 
+              {/* Financial Breakdown */}
               <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400">Base Amount:</span>
@@ -479,10 +567,17 @@ export const PaymentsTab: React.FC = () => {
                   <span className="font-semibold text-white">₹{selectedTx.gstAmount}</span>
                 </div>
                 <div className="flex justify-between items-center pt-1.5 border-t border-white/10 font-bold text-sm text-[#fd8a42]">
-                  <span>Total Amount Paid:</span>
+                  <span>Total Amount:</span>
                   <span>₹{selectedTx.totalAmount} {selectedTx.currency || 'INR'}</span>
                 </div>
               </div>
+
+              {selectedTx.rejectionReason && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl space-y-1">
+                  <div className="text-[10px] font-bold text-rose-300 uppercase">Rejection Reason</div>
+                  <div className="text-[11px] text-rose-200">{selectedTx.rejectionReason}</div>
+                </div>
+              )}
 
               {selectedTx.waivedBy && (
                 <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-1">
@@ -492,14 +587,32 @@ export const PaymentsTab: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              <div className="text-[10px] text-slate-400 space-y-1">
-                <div>Created: {new Date(selectedTx.createdAt).toLocaleString('en-IN')}</div>
-                {selectedTx.paidAt && <div>Paid At: {new Date(selectedTx.paidAt).toLocaleString('en-IN')}</div>}
-              </div>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex items-center justify-between gap-2 border-t border-white/10">
+              <div className="flex items-center gap-2">
+                {selectedTx.status !== 'PAID' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyPayment(selectedTx)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1 shadow-md"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>✓ Verify Payment</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenReject(selectedTx)}
+                      className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>✕ Reject Payment</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setSelectedTx(null)}
@@ -509,6 +622,86 @@ export const PaymentsTab: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* REJECT PAYMENT MODAL WITH PRESET REASONS */}
+      {rejectingTx && (
+        <div className="fixed inset-0 z-50 bg-[#12001f]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <form
+            onSubmit={handleRejectSubmit}
+            className="bg-[#1a0c2e] border border-rose-500/40 w-full max-w-md rounded-3xl shadow-2xl p-6 text-white space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2 text-rose-400">
+                <XCircle className="w-5 h-5 text-rose-400" />
+                <h3 className="font-bold text-base text-white">Reject Payment</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRejectingTx(null)}
+                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Rejecting payment for <strong>{rejectingTx.userName || rejectingTx.userId}</strong> (@{rejectingTx.userId}).
+              The status will be updated to <span className="text-rose-400 font-bold">PAYMENT_REJECTED</span> and the companion will see the reason so they can re-enter their Transaction ID / UTR.
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 block">
+                Select Rejection Reason:
+              </label>
+              <select
+                value={rejectionReasonType}
+                onChange={(e) => setRejectionReasonType(e.target.value)}
+                className="w-full bg-[#201033] border border-white/15 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-rose-400"
+              >
+                <option value="Transaction ID not found">Transaction ID not found</option>
+                <option value="Incorrect amount">Incorrect amount</option>
+                <option value="Duplicate transaction">Duplicate transaction</option>
+                <option value="Payment not received">Payment not received</option>
+                <option value="Invalid UTR">Invalid UTR</option>
+                <option value="Other">Other (with text input)</option>
+              </select>
+            </div>
+
+            {rejectionReasonType === 'Other' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 block">
+                  Custom Rejection Reason:
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={customRejectionReason}
+                  onChange={(e) => setCustomRejectionReason(e.target.value)}
+                  placeholder="Explain why this payment reference or transaction is being rejected..."
+                  className="w-full bg-[#201033] border border-white/15 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-rose-400 placeholder:text-slate-500"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRejectingTx(null)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs shadow-lg cursor-pointer"
+              >
+                ✕ Reject Payment
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

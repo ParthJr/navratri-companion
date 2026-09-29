@@ -1,5 +1,15 @@
 import { parseRequestBody, requireAdminAuth } from '../auth/_authUtils.ts';
-import { getUserByIdentifier, updatePayment, updateUser } from '../_db.ts';
+import {
+  getUserByIdentifier,
+  updatePayment,
+  updateUser,
+  getAllPayments,
+  isTransactionIdAlreadyVerified,
+  getAllPaymentTransactions,
+  updatePaymentTransactionRecord,
+  getAllApplications,
+  updateApplicationRecord,
+} from '../_db.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json');
@@ -43,15 +53,55 @@ export default async function handler(req: any, res: any) {
 
     const now = new Date().toISOString();
 
+    // Check existing payment for this user
+    const allPayments = await getAllPayments();
+    const existingPayment = allPayments.find(
+      (p) => p.userId.toLowerCase() === user.userId.toLowerCase()
+    );
+    const txnIdToCheck = existingPayment?.transactionId || user.transactionId;
+
+    if (txnIdToCheck) {
+      const isDuplicate = await isTransactionIdAlreadyVerified(txnIdToCheck, user.userId);
+      if (isDuplicate) {
+        res.statusCode = 400;
+        return res.end(
+          JSON.stringify({
+            success: false,
+            errorMessage: `Cannot approve: Transaction ID / UTR "${txnIdToCheck}" has already been verified for another user.`,
+          })
+        );
+      }
+    }
+
     // 1. Update Payment Record in central database
     const updatedPayment = await updatePayment(user.userId, {
       paymentStatus: 'APPROVED',
+      status: 'PAID',
+      verifiedAt: now,
+      verifiedBy: approvedBy,
       approvedAt: now,
       approvedBy: approvedBy,
-      notes: `Approved by ${approvedBy} on ${now}`,
+      notes: `Verified & approved by ${approvedBy} on ${now}`,
     });
 
-    // 2. Update User Record in central database
+    // 2. Sync corresponding payment_transactions record if present
+    const allTxns = await getAllPaymentTransactions();
+    const matchingTxn = allTxns.find(
+      (t) =>
+        t.userId.toLowerCase() === user.userId.toLowerCase() &&
+        (t.feeCode.includes('REGISTRATION') || t.orderId === existingPayment?.paymentReference)
+    );
+    if (matchingTxn) {
+      await updatePaymentTransactionRecord(matchingTxn.id, {
+        status: 'PAID',
+        paidAt: now,
+        verifiedAt: now,
+        verifiedBy: approvedBy,
+        notes: `Approved by ${approvedBy}`,
+      });
+    }
+
+    // 3. Update User Record in central database
     const updatedUser = await updateUser(user.userId, {
       accountStatus: 'active',
       paymentStatus: 'approved',
@@ -62,11 +112,27 @@ export default async function handler(req: any, res: any) {
       rejectionReason: null,
     });
 
+    // 4. Update Host Applicant if exists
+    try {
+      const allApps = await getAllApplications();
+      const applicant = allApps.find(
+        (a) => a.userId.toLowerCase() === user.userId.toLowerCase()
+      );
+      if (applicant) {
+        await updateApplicationRecord(applicant.id, {
+          status: 'approved',
+          registrationFeePaid: true,
+        });
+      }
+    } catch (e) {
+      // non-fatal
+    }
+
     res.statusCode = 200;
     return res.end(
       JSON.stringify({
         success: true,
-        message: `Payment approved and account activated for @${user.userId}`,
+        message: `Payment verified & approved, account activated for @${user.userId}`,
         user: updatedUser,
         payment: updatedPayment,
       })
