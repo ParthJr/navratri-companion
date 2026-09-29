@@ -1175,7 +1175,7 @@ export async function getActiveCompanions(): Promise<any[]> {
       registrationFeePaid: true,
     };
 
-    uniqueCompanions.set(key, publicProfile);
+    uniqueCompanions.set(primaryKey, publicProfile);
   }
 
   return Array.from(uniqueCompanions.values());
