@@ -5,8 +5,8 @@ import {
   getUserByIdentifier,
   updateUser,
   isTransactionIdAlreadyVerified,
-  PaymentRecord,
-  PaymentTransactionRecord,
+  type PaymentRecord,
+  type PaymentTransactionRecord,
 } from '../_db.ts';
 
 export default async function handler(req: any, res: any) {

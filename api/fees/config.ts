@@ -1,5 +1,5 @@
 import { parseRequestBody } from '../auth/_authUtils.ts';
-import { getFeeConfigurations, updateFeeConfigurationRecord, FeeConfiguration } from '../_db.ts';
+import { getFeeConfigurations, updateFeeConfigurationRecord, type FeeConfiguration } from '../_db.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json');

@@ -3,8 +3,8 @@ import {
   createUser,
   getUserByIdentifier,
   createApplicationRecord,
-  UserRecord,
-  HostApplicantRecord,
+  type UserRecord,
+  type HostApplicantRecord,
 } from '../_db.ts';
 
 // Helper to calculate age from Date of Birth

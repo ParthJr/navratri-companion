@@ -1,5 +1,5 @@
 import { parseRequestBody } from './auth/_authUtils.ts';
-import { createApplicationRecord, HostApplicantRecord } from './_db.ts';
+import { createApplicationRecord, type HostApplicantRecord } from './_db.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json');

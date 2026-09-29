@@ -3,7 +3,7 @@ import {
   getUserByIdentifier,
   getFeeByCode,
   createPaymentTransactionRecord,
-  PaymentTransactionRecord,
+  type PaymentTransactionRecord,
 } from '../_db.ts';
 
 export default async function handler(req: any, res: any) {

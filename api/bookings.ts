@@ -1,4 +1,4 @@
-import { getAllBookings, createBookingRecord, updateBookingRecord, createPayoutRecord, BookingRecord } from './_db.ts';
+import { getAllBookings, createBookingRecord, updateBookingRecord, createPayoutRecord, type BookingRecord } from './_db.ts';
 import { parseRequestBody } from './auth/_authUtils.ts';
 
 export default async function handler(req: any, res: any) {

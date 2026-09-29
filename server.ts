@@ -1,12 +1,17 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
-// Build revision: 2026-09-29-supa-srk
+// Load environment variables from .env file
+dotenv.config();
+
+// Build revision: 2026-09-30-prod-server-ready
 
 // Import all API route handlers
 import healthHandler from './api/health.ts';
-import uploadHandler from './api/upload.ts';
+import uploadHandler, { serveUpload } from './api/upload.ts';
 import applicationsHandler from './api/applications.ts';
 import bookingsHandler from './api/bookings.ts';
 import companionsHandler from './api/companions.ts';
@@ -38,24 +43,49 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
+// Enable CORS for API routes
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
+// Parse JSON and URL-encoded request bodies
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Adapt Vercel-style (req, res) handlers for Express
 const adapt = (handler: any) => async (req: express.Request, res: express.Response) => {
   try {
+    // Preserve full pathname and search query for URL parsers
+    req.url = req.originalUrl || req.url;
+    // Merge URL route params into req.query if not already present
+    if (req.params && typeof req.params === 'object') {
+      req.query = { ...req.params, ...(req.query || {}) };
+    }
     await handler(req, res);
   } catch (err: any) {
-    console.error(`API Error on ${req.method} ${req.path}:`, err);
+    console.error(`API Error on ${req.method} ${req.originalUrl || req.url}:`, err);
     if (!res.headersSent) {
       res.status(500).json({ success: false, errorMessage: err.message || 'Internal Server Error' });
     }
   }
 };
 
-// Register API routes
+// Static uploads handler fallback
+app.use('/api/uploads', (req, res, next) => {
+  if (serveUpload(req, res)) return;
+  next();
+});
+
+// Register all API routes
 app.all('/api/health', adapt(healthHandler));
 app.all('/api/upload', adapt(uploadHandler));
 app.all('/api/applications', adapt(applicationsHandler));
@@ -74,6 +104,7 @@ app.all('/api/admin/transactions', adapt(adminTransactionsHandler));
 app.all('/api/admin/waive-fee', adapt(adminWaiveFeeHandler));
 app.all('/api/admin/generate-password', adapt(adminGeneratePasswordHandler));
 app.all('/api/admin/users/generate-password', adapt(adminGeneratePasswordHandler));
+app.all('/api/admin/users/:userId/generate-password', adapt(adminGeneratePasswordHandler));
 app.all('/api/auth/login', adapt(authLoginHandler));
 app.all('/api/auth/logout', adapt(authLogoutHandler));
 app.all('/api/auth/register', adapt(authRegisterHandler));
@@ -86,20 +117,68 @@ app.all('/api/payments/webhook', adapt(paymentsWebhookHandler));
 app.all('/api/payments/submit-registration', adapt(paymentsSubmitRegistrationHandler));
 app.all('/api/users/profile', adapt(usersProfileHandler));
 
-// Serve Vite production build static assets
+// Serve Vite production build static assets if present
 const distPath = path.resolve(__dirname, 'dist');
-app.use(express.static(distPath));
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+}
 
 // SPA catch-all fallback: send index.html for all non-API GET routes
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'Endpoint not found' });
   }
-  res.sendFile(path.join(distPath, 'index.html'), (err) => {
-    if (err) next(err);
-  });
+  const indexHtmlPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexHtmlPath)) {
+    res.sendFile(indexHtmlPath);
+  } else {
+    res.status(200).send(`
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Navratri Companion</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; text-align: center; background: #12001f; color: #fff; }
+            h1 { color: #ff8c42; }
+            p { color: #cbd5e1; }
+            code { background: #201033; padding: 4px 8px; border-radius: 6px; }
+          </style>
+        </head>
+        <body>
+          <h1>Navratri Companion Server is Active</h1>
+          <p>API endpoints are live. Production assets are compiling.</p>
+          <p>Health probe: <a href="/api/health" style="color:#ff8c42">/api/health</a></p>
+        </body>
+      </html>
+    `);
+  }
 });
 
-app.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`Server listening on 0.0.0.0:${PORT}`);
+// Process-level exception handling to prevent unexpected server terminations
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Navratri Companion server running at http://0.0.0.0:${PORT}`);
+  console.log(`Database target: ${process.env.SUPABASE_URL || 'Local / Not set'}`);
+});
+
+// Graceful shutdown
+const shutdown = () => {
+  console.log('Shutting down server gracefully...');
+  server.close(() => {
+    console.log('Server terminated cleanly.');
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+export default app;
