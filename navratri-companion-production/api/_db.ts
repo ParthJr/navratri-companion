@@ -1116,17 +1116,18 @@ export async function getActiveCompanions(): Promise<any[]> {
   const seenKeys = new Set<string>();
 
   for (const cand of rawCandidates) {
-    if (!cand.name || !cand.name.trim()) continue;
+    if (!cand.name || !String(cand.name).trim()) continue;
     if (cand.status === 'suspended' || cand.status === 'rejected' || cand.status === 'deleted') continue;
 
-    const primaryKey = (cand.userId || cand.id || cand.name).toLowerCase().trim();
-    const nameKey = cand.name.toLowerCase().trim();
-    if (seenKeys.has(primaryKey) || seenKeys.has(nameKey)) continue;
+    const rawPk = cand.userId ?? cand.id ?? cand.name ?? '';
+    const primaryKey = String(rawPk).toLowerCase().trim();
+    const nameKey = String(cand.name || '').toLowerCase().trim();
+    if (seenKeys.has(primaryKey) || (nameKey && seenKeys.has(nameKey))) continue;
 
-    seenKeys.add(primaryKey);
-    seenKeys.add(nameKey);
-    if (cand.id) seenKeys.add(cand.id.toLowerCase().trim());
-    if (cand.userId) seenKeys.add(cand.userId.toLowerCase().trim());
+    if (primaryKey) seenKeys.add(primaryKey);
+    if (nameKey) seenKeys.add(nameKey);
+    if (cand.id != null) seenKeys.add(String(cand.id).toLowerCase().trim());
+    if (cand.userId != null) seenKeys.add(String(cand.userId).toLowerCase().trim());
 
     const hourly = Number(cand.hourlyRate) || 1200;
     const price2h = hourly;

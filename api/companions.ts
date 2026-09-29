@@ -20,12 +20,13 @@ export default async function handler(req: any, res: any) {
       })
     );
   } catch (err: any) {
+    console.error('Error fetching companions:', err);
     res.statusCode = 500;
     return res.end(
       JSON.stringify({
         success: false,
         companions: [],
-        errorMessage: 'Failed to fetch verified companion listings',
+        errorMessage: err?.message || 'Failed to fetch verified companion listings',
       })
     );
   }
