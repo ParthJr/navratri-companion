@@ -100,7 +100,7 @@ export const SuperAdminApp: React.FC<SuperAdminAppProps> = ({ onExitToCustomerAp
               {activeTab === 'overview' && <OverviewTab dateFilter={dateFilter} />}
               {activeTab === 'bookings' && <BookingsTab />}
               {activeTab === 'completion' && <CompletionTab />}
-              {activeTab === 'users' && <UsersTab />}
+              {activeTab === 'users' && <UsersTab onExitToCustomerApp={onExitToCustomerApp} />}
               {activeTab === 'payment-approvals' && <PaymentApprovalsTab />}
               {activeTab === 'companions' && <CompanionsTab />}
               {activeTab === 'applications' && <ApplicationsTab />}

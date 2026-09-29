@@ -12,6 +12,7 @@ interface HeaderProps {
   hasCompletedProfile?: boolean;
   onOpenCreateProfile?: () => void;
   onLogout?: () => void;
+  isImpersonating?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   hasCompletedProfile = false,
   onOpenCreateProfile,
   onLogout,
+  isImpersonating = false,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -65,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 w-full z-40 bg-[#f8f9ff]/95 backdrop-blur-xl border-b border-[#cec3ce]/30 shadow-xs">
+      <header className={`fixed ${isImpersonating ? 'top-9' : 'top-0'} left-0 right-0 w-full z-40 bg-[#f8f9ff]/95 backdrop-blur-xl border-b border-[#cec3ce]/30 shadow-xs transition-all`}>
         <div className="h-16 sm:h-20 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2">
           {/* Brand Logo & Title */}
           <button

@@ -27,7 +27,7 @@ import {
 } from '../../services/dbService';
 
 export const ApplicationsTab: React.FC = () => {
-  const { applicants: contextApplicants, registrationFeeConfig, syncApplicationsWithDb } = useSuperAdmin();
+  const { applicants: contextApplicants, registrationFeeConfig, syncApplicationsWithDb, refreshCompanions } = useSuperAdmin();
 
   const [dbApplicants, setDbApplicants] = useState<HostApplicant[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,6 +78,9 @@ export const ApplicationsTab: React.FC = () => {
     if (type === 'approve') {
       try {
         await approveApplicationInDb(applicant.id);
+        if (refreshCompanions) {
+          await refreshCompanions();
+        }
         setNotice(`Approved ${applicant.name} as verified companion!`);
         await loadApplications();
       } catch {

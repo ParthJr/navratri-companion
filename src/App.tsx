@@ -304,7 +304,15 @@ export default function App() {
     setQuickModalCompanion(comp);
   };
 
-  const { companions: liveCompanions, addBooking } = useSuperAdmin();
+  const {
+    companions: liveCompanions,
+    isLoadingCompanions,
+    companionsError,
+    refreshCompanions,
+    impersonatedCustomer,
+    exitCustomerImpersonation,
+    addBooking,
+  } = useSuperAdmin();
 
   const handleBookingComplete = (newBooking: Booking) => {
     setBookings((prev) => [newBooking, ...prev]);
@@ -619,13 +627,41 @@ export default function App() {
         <SuperAdminApp onExitToCustomerApp={() => handleNavigate('marketplace')} />
       ) : (
         <div className="min-h-screen flex flex-col bg-[#f8f9ff] text-[#121c2a]">
+          {/* Admin Customer Impersonation Sticky Banner (Section 7) */}
+          {impersonatedCustomer && (
+            <aside
+              role="alert"
+              aria-label="Super Admin Impersonation Mode"
+              className="fixed top-0 left-0 right-0 z-50 h-9 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white px-3 sm:px-6 text-xs font-semibold flex items-center justify-between shadow-md"
+            >
+              <div className="flex items-center gap-2 truncate">
+                <span className="bg-black/30 text-amber-200 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shrink-0">
+                  Admin View Mode
+                </span>
+                <span className="truncate">
+                  Viewing as customer: <strong>{impersonatedCustomer.name}</strong> ({impersonatedCustomer.email || impersonatedCustomer.phone})
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  exitCustomerImpersonation();
+                  handleNavigate('super-admin');
+                }}
+                className="bg-white text-amber-950 px-2.5 py-0.5 rounded text-xs font-bold hover:bg-amber-50 active:scale-95 transition shadow-xs shrink-0 cursor-pointer"
+              >
+                Exit Customer View
+              </button>
+            </aside>
+          )}
+
           {/* Universal Fixed Header */}
           <Header
             currentView={currentView}
             onNavigate={handleNavigate}
-            userName={profile.name}
-            isLoggedIn={isLoggedIn}
-            hasCompletedProfile={Boolean(profile.hasCompletedProfile)}
+            userName={impersonatedCustomer ? impersonatedCustomer.name : profile.name}
+            isLoggedIn={Boolean(impersonatedCustomer || isLoggedIn)}
+            isImpersonating={Boolean(impersonatedCustomer)}
+            hasCompletedProfile={Boolean(impersonatedCustomer ? true : profile.hasCompletedProfile)}
             onOpenCreateProfile={() => setShowCreateProfileModal(true)}
             onLogout={handleLogoutUser}
             onOpenLogin={() => {
@@ -639,11 +675,14 @@ export default function App() {
             bookingCount={bookings.filter((b) => b.status === 'confirmed').length}
           />
 
-          {/* Main Content Area (padding-top accounts for fixed h-20 header) */}
-          <main className="flex-grow pt-20">
+          {/* Main Content Area (padding-top accounts for header + impersonation banner) */}
+          <main className={`flex-grow ${impersonatedCustomer ? 'pt-28' : 'pt-20'}`}>
             {currentView === 'marketplace' && (
               <MarketplacePage
                 companions={liveCompanions}
+                isLoading={isLoadingCompanions}
+                error={companionsError}
+                onRetry={refreshCompanions}
                 onSelectCompanion={handleSelectCompanion}
                 onOpenQuickModal={handleOpenQuickModal}
               />

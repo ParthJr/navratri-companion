@@ -6,12 +6,18 @@ interface MarketplacePageProps {
   companions: Companion[];
   onSelectCompanion: (companion: Companion) => void;
   onOpenQuickModal: (companion: Companion) => void;
+  isLoading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 export const MarketplacePage: React.FC<MarketplacePageProps> = ({
   companions,
   onSelectCompanion,
   onOpenQuickModal,
+  isLoading = false,
+  error = null,
+  onRetry,
 }) => {
   const [dateFilter, setDateFilter] = useState('');
   const [experienceFilter, setExperienceFilter] = useState('');
@@ -22,42 +28,54 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
   // Filter logic
   const filteredCompanions = useMemo(() => {
     return companions.filter((comp: any) => {
-      // PUBLIC PROFILE VISIBILITY RULES:
-      // A profile can appear publicly ONLY when:
-      // 1. Payment Approved (registrationFeePaid !== false)
-      // 2. Account Active (status !== 'pending' && status !== 'suspended' && status !== 'rejected')
-      // 3. Profile Completed (hasCompletedProfile !== false)
-      // 4. Profile Approved/Verified by Admin (isVerified !== false)
-      if (comp.registrationFeePaid === false) return false;
-      if (comp.status === 'pending' || comp.status === 'suspended' || comp.status === 'rejected') return false;
-      if (comp.hasCompletedProfile === false) return false;
-      if (comp.isVerified === false) return false;
+      // 1. Account status eligibility
+      if (comp.status === 'suspended' || comp.status === 'rejected' || comp.status === 'deleted') return false;
+      if (comp.registrationFeePaid === false && comp.feePaid === false) return false;
 
-      // Date
+      // 2. Date Filter
       if (dateFilter) {
         if (dateFilter === 'tonight' && !comp.availableTonight) return false;
         if (dateFilter !== 'tonight' && !comp.availableDates?.includes(dateFilter)) return false;
       }
-      // Experience
-      if (experienceFilter && !comp.experiences?.includes(experienceFilter)) {
-        return false;
+
+      // 3. Experience Filter
+      if (experienceFilter) {
+        const matchExp = comp.experiences?.some(
+          (e: string) => e.toLowerCase() === experienceFilter.toLowerCase()
+        );
+        if (!matchExp) return false;
       }
-      // Duration
-      if (durationFilter && !comp.durations?.includes(Number(durationFilter))) {
-        return false;
+
+      // 4. Duration Filter
+      if (durationFilter) {
+        const durNum = Number(durationFilter);
+        if (!comp.durations?.includes(durNum)) return false;
       }
-      // Price
+
+      // 5. Price Filter
       if (priceFilter) {
         const max = Number(priceFilter);
-        if (comp.price2h > max) return false;
+        if (comp.price2h && comp.price2h > max) return false;
       }
-      // Search
+
+      // 6. Case-Insensitive Search Filter (name, city, area, bio, experience, skills, venues)
       if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const matchName = comp.name.toLowerCase().includes(query);
+        const query = searchQuery.toLowerCase().trim();
+        const matchName = comp.name?.toLowerCase().includes(query);
+        const matchCity = comp.city?.toLowerCase().includes(query);
+        const matchArea = comp.area?.toLowerCase().includes(query);
+        const matchBio =
+          comp.bioSnippet?.toLowerCase().includes(query) ||
+          comp.fullBio?.toLowerCase().includes(query);
         const matchExp = comp.experiences?.some((e: string) => e.toLowerCase().includes(query));
-        if (!matchName && !matchExp) return false;
+        const matchSkill = comp.skills?.some((s: string) => s.toLowerCase().includes(query));
+        const matchVenue = comp.preferredVenues?.some((v: string) => v.toLowerCase().includes(query));
+
+        if (!matchName && !matchCity && !matchArea && !matchBio && !matchExp && !matchSkill && !matchVenue) {
+          return false;
+        }
       }
+
       return true;
     });
   }, [companions, dateFilter, experienceFilter, durationFilter, priceFilter, searchQuery]);
@@ -340,17 +358,51 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
               </div>
             ))}
           </div>
-        ) : (
-          /* Empty State when no results found */
+        ) : isLoading ? (
+          /* Loading State */
           <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-2xl border border-[#cec3ce]/30 p-8 shadow-xs">
-            <div className="w-16 h-16 bg-[#eff4ff] rounded-full flex items-center justify-center mb-4 text-[#596579]">
-              <span className="material-symbols-outlined text-[36px]">search_off</span>
+            <div className="w-16 h-16 bg-[#eff4ff] rounded-full flex items-center justify-center mb-4 text-[#9b4500]">
+              <span className="material-symbols-outlined text-[36px] animate-spin">progress_activity</span>
             </div>
             <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-xl text-[#121c2a] mb-2">
-              No companions available yet.
+              Finding verified companions...
+            </h3>
+            <p className="text-sm text-[#596579] max-w-md leading-relaxed">
+              Checking live registry for background-checked Navratri companions in Ahmedabad & Gandhinagar.
+            </p>
+          </div>
+        ) : error ? (
+          /* Error State */
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-2xl border border-red-200 p-8 shadow-xs">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4 text-red-500">
+              <span className="material-symbols-outlined text-[36px]">error_outline</span>
+            </div>
+            <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-xl text-[#121c2a] mb-2">
+              Unable to load companions. Please try again.
             </h3>
             <p className="text-sm text-[#596579] max-w-md mb-6 leading-relaxed">
-              Verified companion profiles will appear here once they complete registration and approval.
+              {error}
+            </p>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="bg-[#311042] text-white text-sm font-semibold px-6 py-2.5 rounded-lg hover:bg-[#9b4500] transition-colors"
+              >
+                Retry Connection
+              </button>
+            )}
+          </div>
+        ) : companions.length > 0 ? (
+          /* Zero results from active filters */
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-2xl border border-[#cec3ce]/30 p-8 shadow-xs">
+            <div className="w-16 h-16 bg-[#eff4ff] rounded-full flex items-center justify-center mb-4 text-[#596579]">
+              <span className="material-symbols-outlined text-[36px]">filter_alt_off</span>
+            </div>
+            <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-xl text-[#121c2a] mb-2">
+              No companions match your current filters.
+            </h3>
+            <p className="text-sm text-[#596579] max-w-md mb-6 leading-relaxed">
+              Try adjusting your date, duration, price, or search criteria to see available companions.
             </p>
             <button
               onClick={resetFilters}
@@ -358,6 +410,19 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
             >
               Reset All Filters
             </button>
+          </div>
+        ) : (
+          /* Genuinely zero approved companions in database */
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-2xl border border-[#cec3ce]/30 p-8 shadow-xs">
+            <div className="w-16 h-16 bg-[#eff4ff] rounded-full flex items-center justify-center mb-4 text-[#596579]">
+              <span className="material-symbols-outlined text-[36px]">group_off</span>
+            </div>
+            <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-xl text-[#121c2a] mb-2">
+              No verified companions are available yet.
+            </h3>
+            <p className="text-sm text-[#596579] max-w-md leading-relaxed">
+              Verified companion profiles will appear here once they complete registration and approval.
+            </p>
           </div>
         )}
       </section>

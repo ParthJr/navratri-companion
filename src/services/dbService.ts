@@ -631,17 +631,25 @@ export async function createComplaintInDb(complaintData: any): Promise<{ success
 /**
  * Fetch active verified companions from central database
  */
-export async function fetchActiveCompanionsFromDb(): Promise<any[]> {
+export async function fetchActiveCompanionsFromDb(): Promise<{ success: boolean; companions: any[]; errorMessage?: string }> {
   try {
     const res = await fetch('/api/companions');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.companions)) {
-        return data.companions;
-      }
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data && data.success && Array.isArray(data.companions)) {
+      return { success: true, companions: data.companions };
     }
-  } catch (e) {}
-  return [];
+    return {
+      success: false,
+      companions: [],
+      errorMessage: data.errorMessage || 'Unable to load companions. Please try again.',
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      companions: [],
+      errorMessage: e?.message || 'Network connection error. Unable to load companions.',
+    };
+  }
 }
 
 /**

@@ -43,6 +43,7 @@ import {
   fetchPaymentApprovalsFromDb,
   fetchUsersFromDb,
   fetchApplicationsFromDb,
+  fetchActiveCompanionsFromDb,
 } from '../../services/dbService';
 import { Booking, Companion, CompanionPayout, HostApplicant } from '../../types';
 import { COMPANIONS_DATA } from '../../data/companions';
@@ -97,10 +98,18 @@ interface SuperAdminContextType {
 
   // Companions
   companions: Companion[];
+  isLoadingCompanions: boolean;
+  companionsError: string | null;
+  refreshCompanions: () => Promise<void>;
   addCompanion: (companion: Companion) => void;
   updateCompanion: (id: string, updates: Partial<Companion>) => void;
   deleteCompanion: (id: string) => void;
   updateCompanionStatus: (id: string, isTopHost?: boolean) => void;
+
+  // Customer Impersonation (Super Admin Only)
+  impersonatedCustomer: CustomerUser | null;
+  impersonateCustomer: (customer: CustomerUser, reason?: string) => void;
+  exitCustomerImpersonation: () => void;
 
   // Applications
   applicants: HostApplicant[];
@@ -424,6 +433,62 @@ export const SuperAdminProvider: React.FC<{
     return initialCompanions || [];
   });
 
+  const [isLoadingCompanions, setIsLoadingCompanions] = useState<boolean>(false);
+  const [companionsError, setCompanionsError] = useState<string | null>(null);
+
+  const [impersonatedCustomer, setImpersonatedCustomer] = useState<CustomerUser | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('navratri_impersonated_customer');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const refreshCompanions = async () => {
+    setIsLoadingCompanions(true);
+    setCompanionsError(null);
+    try {
+      const res = await fetchActiveCompanionsFromDb();
+      if (res.success) {
+        setCompanions(res.companions);
+        localStorage.setItem('navratri_companions_database', JSON.stringify(res.companions));
+      } else {
+        setCompanionsError(res.errorMessage || 'Unable to load companions. Please try again.');
+      }
+    } catch (err: any) {
+      setCompanionsError(err?.message || 'Unable to load companions. Please try again.');
+    } finally {
+      setIsLoadingCompanions(false);
+    }
+  };
+
+  const impersonateCustomer = (customer: CustomerUser, reason?: string) => {
+    setImpersonatedCustomer(customer);
+    try {
+      sessionStorage.setItem('navratri_impersonated_customer', JSON.stringify(customer));
+    } catch {}
+    addAuditLog(
+      'Admin Customer Impersonation Started',
+      'users',
+      `Super Admin ${currentAdmin?.name || 'Admin'} started viewing as customer ${customer.name} (${customer.id}). ${reason ? `Reason: ${reason}` : ''}`
+    );
+  };
+
+  const exitCustomerImpersonation = () => {
+    if (impersonatedCustomer) {
+      addAuditLog(
+        'Admin Customer Impersonation Ended',
+        'users',
+        `Super Admin ended viewing as customer ${impersonatedCustomer.name} (${impersonatedCustomer.id})`
+      );
+    }
+    setImpersonatedCustomer(null);
+    try {
+      sessionStorage.removeItem('navratri_impersonated_customer');
+    } catch {}
+  };
+
   const [bookings, setBookings] = useState<Booking[]>(() => {
     const saved = localStorage.getItem('navratri_companion_bookings');
     return saved ? JSON.parse(saved) : (initialBookings || []);
@@ -615,6 +680,8 @@ export const SuperAdminProvider: React.FC<{
         if (Array.isArray(usersList)) {
           setCustomers(dbCustomers);
         }
+
+        await refreshCompanions();
       } catch (e) {}
     };
 
@@ -1020,6 +1087,7 @@ export const SuperAdminProvider: React.FC<{
         return a;
       })
     );
+    refreshCompanions();
   };
 
   const rejectApplicant = (id: string) => {
@@ -1610,6 +1678,12 @@ export const SuperAdminProvider: React.FC<{
         confirmUserPayment,
         rejectUserPayment,
         companions,
+        isLoadingCompanions,
+        companionsError,
+        refreshCompanions,
+        impersonatedCustomer,
+        impersonateCustomer,
+        exitCustomerImpersonation,
         addCompanion,
         updateCompanion,
         deleteCompanion,

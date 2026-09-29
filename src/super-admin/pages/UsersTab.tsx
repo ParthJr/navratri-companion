@@ -18,11 +18,16 @@ import {
   Clock,
   Lock,
   Send,
+  UserCheck,
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
 import { CustomerUser } from '../types';
 
-export const UsersTab: React.FC = () => {
+interface UsersTabProps {
+  onExitToCustomerApp?: () => void;
+}
+
+export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
   const {
     customers,
     updateCustomerStatus,
@@ -33,6 +38,7 @@ export const UsersTab: React.FC = () => {
     bookings,
     payments,
     complaints,
+    impersonateCustomer,
   } = useSuperAdmin();
 
   const [search, setSearch] = useState('');
@@ -277,6 +283,19 @@ export const UsersTab: React.FC = () => {
 
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => {
+                            impersonateCustomer(cust);
+                            if (onExitToCustomerApp) {
+                              onExitToCustomerApp();
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400"
+                          title={`Login as Customer (View Marketplace as ${cust.name})`}
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                        </button>
+
                         <button
                           onClick={() => setSelectedCustomer(cust)}
                           className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white"
@@ -526,12 +545,26 @@ export const UsersTab: React.FC = () => {
                 )}
               </div>
 
-              {/* Status Change Controls */}
-              <div className="flex items-center justify-between pt-4 border-t border-white/10">
+              {/* Status Change Controls & Impersonation */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-4 border-t border-white/10">
                 <div className="text-xs text-slate-400">
                   Current Status: <span className="font-bold text-white capitalize">{selectedCustomer.status}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      impersonateCustomer(selectedCustomer);
+                      if (onExitToCustomerApp) {
+                        onExitToCustomerApp();
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-purple-900/40"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>View as Customer</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       updateCustomerStatus(selectedCustomer.id, 'active');

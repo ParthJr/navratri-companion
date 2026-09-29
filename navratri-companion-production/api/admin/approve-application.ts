@@ -43,6 +43,10 @@ export default async function handler(req: any, res: any) {
           role: 'companion',
           profileStatus: 'verified',
           verificationStatus: 'verified',
+          accountStatus: 'active',
+          paymentStatus: 'approved',
+          feePaid: true,
+          loginEnabled: true,
         });
       } catch (userErr) {
         console.warn('Note updating companion user record:', userErr);
