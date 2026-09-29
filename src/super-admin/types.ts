@@ -361,4 +361,10 @@ export interface CustomerUser {
   paymentApprovedAt?: string;
   paymentApprovedBy?: string;
   rejectionReason?: string;
+  // Password Reset fields
+  mustChangePassword?: boolean;
+  temporaryPassword?: boolean;
+  passwordExpiresAt?: string | null;
+  passwordResetAt?: string | null;
+  passwordResetBy?: string | null;
 }

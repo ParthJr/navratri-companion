@@ -21,6 +21,8 @@ import {
   UserCheck,
   Coins,
   Receipt,
+  KeyRound,
+  Copy,
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
 import { CustomerUser } from '../types';
@@ -28,6 +30,7 @@ import {
   fetchFeeConfigurations,
   fetchPaymentTransactionsFromDb,
   waiveUserFeeInDb,
+  generateUserPasswordByAdmin,
   PaymentTransactionRecord,
 } from '../../services/dbService';
 
@@ -64,6 +67,18 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
   const [emailFilter, setEmailFilter] = useState<'all' | 'verified' | 'not_verified'>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerUser | null>(null);
   const [resendNotification, setResendNotification] = useState<string | null>(null);
+
+  // Super Admin Password Management State
+  const isSuperAdmin = currentAdmin?.role === 'super_admin' || (currentAdmin as any)?.role === 'owner';
+  const [passwordTargetUser, setPasswordTargetUser] = useState<CustomerUser | null>(null);
+  const [generatingPassword, setGeneratingPassword] = useState(false);
+  const [generatedPasswordResult, setGeneratedPasswordResult] = useState<{
+    password: string;
+    expiresAt: string;
+    user: CustomerUser;
+  } | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
+  const [passwordGenError, setPasswordGenError] = useState<string | null>(null);
 
   const loadData = () => {
     fetchFeeConfigurations().then((res) => {
@@ -138,6 +153,66 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
     }
     setResendNotification(`Email marked as Verified for ${cust.name}`);
     setTimeout(() => setResendNotification(null), 3500);
+  };
+
+  const getPasswordStatus = (user: CustomerUser) => {
+    if (user.temporaryPassword || user.mustChangePassword) {
+      const isExpired = user.passwordExpiresAt && new Date(user.passwordExpiresAt).getTime() < Date.now();
+      if (isExpired) {
+        return {
+          label: 'Temporary Password — Expired',
+          color: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
+          dotColor: 'bg-rose-500',
+        };
+      }
+      return {
+        label: 'Temporary Password — Change Required',
+        color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+        dotColor: 'bg-amber-500 animate-pulse',
+      };
+    }
+    return {
+      label: 'Normal',
+      color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+      dotColor: 'bg-emerald-500',
+    };
+  };
+
+  const handleGeneratePassword = async () => {
+    if (!passwordTargetUser) return;
+    setGeneratingPassword(true);
+    setPasswordGenError(null);
+    try {
+      const res = await generateUserPasswordByAdmin(passwordTargetUser.id);
+      setGeneratingPassword(false);
+      if (res.success && res.temporaryPassword) {
+        setGeneratedPasswordResult({
+          password: res.temporaryPassword,
+          expiresAt: res.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          user: passwordTargetUser,
+        });
+        if (selectedCustomer && selectedCustomer.id === passwordTargetUser.id) {
+          setSelectedCustomer({
+            ...selectedCustomer,
+            mustChangePassword: true,
+            temporaryPassword: true,
+            passwordExpiresAt: res.expiresAt,
+          });
+        }
+        const found = customers.find((c) => c.id === passwordTargetUser.id);
+        if (found) {
+          found.mustChangePassword = true;
+          found.temporaryPassword = true;
+          found.passwordExpiresAt = res.expiresAt;
+        }
+        setPasswordTargetUser(null);
+      } else {
+        setPasswordGenError(res.errorMessage || 'Failed to generate temporary password');
+      }
+    } catch (err: any) {
+      setGeneratingPassword(false);
+      setPasswordGenError(err.message || 'Network error generating password');
+    }
   };
 
   const customerBookings = selectedCustomer
@@ -231,6 +306,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
                 <th className="py-3.5 px-4">Role</th>
                 <th className="py-3.5 px-4">Email &amp; Phone</th>
                 <th className="py-3.5 px-4">Payment</th>
+                <th className="py-3.5 px-4">Password Status</th>
                 <th className="py-3.5 px-4">City</th>
                 <th className="py-3.5 px-4">KYC Status</th>
                 <th className="py-3.5 px-4">Registration</th>
@@ -241,7 +317,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
             <tbody className="divide-y divide-white/5">
               {filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-10 text-slate-500 font-medium">
+                  <td colSpan={10} className="text-center py-10 text-slate-500 font-medium">
                     {customers.length === 0 ? 'No registered users in database yet' : 'No users found matching search criteria.'}
                   </td>
                 </tr>
@@ -321,6 +397,19 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
                         return (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
                             <Clock className="w-3 h-3" /> Pending (₹{feeAmt})
+                          </span>
+                        );
+                      })()}
+                    </td>
+
+                    {/* Password Status */}
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      {(() => {
+                        const pw = getPasswordStatus(cust);
+                        return (
+                          <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${pw.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${pw.dotColor}`} />
+                            {pw.label}
                           </span>
                         );
                       })()}
@@ -426,6 +515,20 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
+
+                        {/* Super Admin Password Generation Button */}
+                        {isSuperAdmin && cust.role !== 'admin' && cust.role !== 'owner' && (
+                          <button
+                            onClick={() => {
+                              setPasswordTargetUser(cust);
+                              setPasswordGenError(null);
+                            }}
+                            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/20 transition-colors"
+                            title={`Generate New Temporary Password for ${cust.name} (Super Admin Only)`}
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
                         {!cust.emailVerified && (
                           <button
@@ -657,6 +760,47 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
                       </button>
                     </div>
                   )}
+
+                  {/* Super Admin Password Management in Drawer */}
+                  <div className="p-3 rounded-xl bg-white/5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-purple-400" />
+                        <span className="font-semibold text-white">Password Status:</span>
+                      </div>
+                      {(() => {
+                        const pw = getPasswordStatus(selectedCustomer);
+                        return (
+                          <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${pw.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${pw.dotColor}`} />
+                            {pw.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
+
+                    {selectedCustomer.passwordExpiresAt && (selectedCustomer.temporaryPassword || selectedCustomer.mustChangePassword) && (
+                      <p className="text-[11px] text-slate-400">
+                        Expires: <span className="text-slate-200 font-medium">{new Date(selectedCustomer.passwordExpiresAt).toLocaleString()}</span>
+                      </p>
+                    )}
+
+                    {isSuperAdmin && selectedCustomer.role !== 'admin' && selectedCustomer.role !== 'owner' && (
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPasswordTargetUser(selectedCustomer);
+                            setPasswordGenError(null);
+                          }}
+                          className="w-full py-1.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors border border-amber-500/30 cursor-pointer"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Generate New Password (Super Admin Only)</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Identity documents preview */}
                   <div className="pt-1">
@@ -973,6 +1117,190 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* CONFIRM PASSWORD GENERATION MODAL (SUPER ADMIN ONLY) */}
+      {passwordTargetUser && (
+        <div className="fixed inset-0 z-50 bg-[#12001f]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div
+            className="bg-[#1a0c2e] border border-amber-500/40 w-full max-w-md rounded-3xl shadow-2xl p-6 text-white space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-base text-white">Generate New Password</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!generatingPassword) setPasswordTargetUser(null);
+                }}
+                disabled={generatingPassword}
+                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block mb-0.5 text-amber-300">Warning: Invalidation Notice</strong>
+                Generating a new password will immediately invalidate the user's current password. A cryptographically secure temporary password valid for <strong>24 hours</strong> will be generated. The user will be required to set a new password on their next login.
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-white/5 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Target User:</span>
+                <span className="font-semibold text-white">{passwordTargetUser.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">User ID:</span>
+                <span className="font-mono text-purple-300">@{passwordTargetUser.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Email:</span>
+                <span className="text-slate-200">{passwordTargetUser.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Role:</span>
+                <span className="font-bold text-[#fd8a42] uppercase">{passwordTargetUser.role || 'customer'}</span>
+              </div>
+            </div>
+
+            {passwordGenError && (
+              <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{passwordGenError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={generatingPassword}
+                onClick={() => setPasswordTargetUser(null)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={generatingPassword}
+                onClick={handleGeneratePassword}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs shadow-lg cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                {generatingPassword ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-3.5 h-3.5" />
+                    Generate Password
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DISPLAY GENERATED TEMPORARY PASSWORD MODAL (ONE-TIME DISPLAY) */}
+      {generatedPasswordResult && (
+        <div className="fixed inset-0 z-50 bg-[#12001f]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div
+            className="bg-[#1a0c2e] border border-emerald-500/40 w-full max-w-md rounded-3xl shadow-2xl p-6 text-white space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-bold text-base text-white">Temporary Password Generated</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setGeneratedPasswordResult(null);
+                  setPasswordCopied(false);
+                }}
+                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200">
+              <p className="font-semibold text-amber-300 mb-1">Important: One-Time Display</p>
+              <p>
+                This temporary password will <strong>only be shown once</strong>. It will not be stored in plaintext. Copy it now and share it securely with the user.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-slate-400 block font-medium">Generated Temporary Password:</label>
+              <div className="flex items-center gap-2 bg-[#12001f] border border-white/20 rounded-xl p-3">
+                <span className="font-mono text-base font-bold text-emerald-400 tracking-wider flex-1 select-all break-all">
+                  {generatedPasswordResult.password}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedPasswordResult.password);
+                    setPasswordCopied(true);
+                    setTimeout(() => setPasswordCopied(false), 3000);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-emerald-500/30 cursor-pointer"
+                >
+                  {passwordCopied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" /> Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copy
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-white/5 space-y-1 text-xs text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-400">User:</span>
+                <span className="font-medium text-white">{generatedPasswordResult.user.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">User ID:</span>
+                <span className="font-mono text-purple-300">@{generatedPasswordResult.user.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Expires In:</span>
+                <span className="text-amber-400 font-medium">24 Hours ({new Date(generatedPasswordResult.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Requirement:</span>
+                <span className="text-purple-300 font-medium">Password change required on login</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGeneratedPasswordResult(null);
+                  setPasswordCopied(false);
+                }}
+                className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-xs shadow-lg transition-colors cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

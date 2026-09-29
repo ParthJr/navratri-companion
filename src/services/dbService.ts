@@ -39,6 +39,11 @@ export interface DbUser {
   paymentReference?: string;
   paymentSubmittedAt?: string;
   policyConsent?: any;
+  mustChangePassword?: boolean;
+  temporaryPassword?: boolean;
+  passwordExpiresAt?: string | null;
+  passwordResetAt?: string | null;
+  passwordResetBy?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -922,6 +927,77 @@ export async function waiveUserFeeInDb(
     return { success: false, errorMessage: data.errorMessage || 'Failed to waive user fee' };
   } catch (err: any) {
     return { success: false, errorMessage: err.message || 'Network error waiving fee' };
+  }
+}
+
+/**
+ * Generate a new temporary password for a user (Super Admin Only)
+ */
+export async function generateUserPasswordByAdmin(userId: string): Promise<{
+  success: boolean;
+  temporaryPassword?: string;
+  expiresAt?: string;
+  user?: { userId: string; name: string; role: string; email?: string };
+  errorMessage?: string;
+}> {
+  try {
+    const res = await fetch('/api/admin/generate-password', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ userId }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        temporaryPassword: data.temporaryPassword,
+        expiresAt: data.expiresAt,
+        user: data.user,
+      };
+    }
+    return {
+      success: false,
+      errorMessage: data.errorMessage || 'Failed to generate temporary password',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      errorMessage: err.message || 'Network error generating password',
+    };
+  }
+}
+
+/**
+ * Change user password (force password change or self-service)
+ */
+export async function changeUserPassword(payload: {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}): Promise<{ success: boolean; message?: string; errorMessage?: string }> {
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        message: data.message || 'Password changed successfully.',
+      };
+    }
+    return {
+      success: false,
+      errorMessage: data.errorMessage || 'Failed to change password',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      errorMessage: err.message || 'Network error changing password',
+    };
   }
 }
 

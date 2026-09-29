@@ -80,6 +80,60 @@ export function verifyAdminAuthorization(req: any): boolean {
   );
 }
 
+/**
+ * Strictly verifies whether the incoming request originates from a genuine SUPER ADMIN or OWNER.
+ * Returns { authorized: true, payload } only if verified.
+ */
+export function verifySuperAdminAuthorization(req: any): { authorized: boolean; payload?: TokenPayload } {
+  const token = getTokenFromRequest(req);
+  if (!token) return { authorized: false };
+  const verified = verifySessionToken(token);
+  if (!verified.valid || !verified.payload) return { authorized: false };
+  const role = (verified.payload.role || '').toLowerCase();
+  const adminRole = (verified.payload.adminRole || '').toLowerCase();
+  const isSuperAdmin = role === 'owner' || adminRole === 'super_admin';
+  return { authorized: isSuperAdmin, payload: verified.payload };
+}
+
+/**
+ * Generates a cryptographically secure random temporary password.
+ * Format: 14 characters containing uppercase, lowercase, numbers, and symbols.
+ * Prevents predictable, dictionary, or sequential patterns.
+ */
+export function generateSecureTemporaryPassword(length: number = 14): string {
+  const uppercase = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lowercase = 'abcdefghijkmnopqrstuvwxyz';
+  const numbers = '23456789';
+  const symbols = '!@#$%^&*';
+  const all = uppercase + lowercase + numbers + symbols;
+
+  const pick = (charset: string) => {
+    const byte = crypto.randomBytes(1)[0];
+    return charset[byte % charset.length];
+  };
+
+  const passwordChars = [
+    pick(uppercase),
+    pick(lowercase),
+    pick(numbers),
+    pick(symbols),
+  ];
+
+  for (let i = passwordChars.length; i < length; i++) {
+    passwordChars.push(pick(all));
+  }
+
+  // Cryptographically shuffle using Fisher-Yates with crypto.randomBytes
+  for (let i = passwordChars.length - 1; i > 0; i--) {
+    const j = crypto.randomBytes(1)[0] % (i + 1);
+    const temp = passwordChars[i];
+    passwordChars[i] = passwordChars[j];
+    passwordChars[j] = temp;
+  }
+
+  return passwordChars.join('');
+}
+
 export function requireAdminAuth(req: any, res: any): boolean {
   if (!verifyAdminAuthorization(req)) {
     res.statusCode = 401;

@@ -130,6 +130,21 @@ export default async function handler(req: any, res: any) {
         );
       }
 
+      // Check temporary password expiration (strictly 24 hours validity)
+      if (dbUser.temporaryPassword && dbUser.passwordExpiresAt) {
+        const expiryTime = new Date(dbUser.passwordExpiresAt).getTime();
+        if (Date.now() > expiryTime) {
+          res.statusCode = 403;
+          return res.end(
+            JSON.stringify({
+              success: false,
+              passwordExpired: true,
+              errorMessage: 'Your temporary password has expired. Please contact Super Admin to generate a new password.',
+            })
+          );
+        }
+      }
+
       const pStatus = (dbUser.paymentStatus || '').toLowerCase();
       const aStatus = (dbUser.accountStatus || '').toLowerCase();
 
@@ -184,6 +199,8 @@ export default async function handler(req: any, res: any) {
         aadhaarImage: dbUser.aadhaarImage,
         selfieImage: dbUser.selfieImage,
         profilePhoto: dbUser.profilePhoto,
+        mustChangePassword: Boolean(dbUser.mustChangePassword),
+        temporaryPassword: Boolean(dbUser.temporaryPassword),
       };
 
       const token = generateSessionToken({
@@ -199,6 +216,8 @@ export default async function handler(req: any, res: any) {
           success: true,
           account: userAccount,
           user: userAccount,
+          mustChangePassword: Boolean(dbUser.mustChangePassword),
+          temporaryPassword: Boolean(dbUser.temporaryPassword),
           token,
         })
       );

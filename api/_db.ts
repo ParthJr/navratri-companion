@@ -45,6 +45,11 @@ export interface UserRecord {
   paymentReference?: string;
   paymentSubmittedAt?: string;
   policyConsent?: any;
+  mustChangePassword?: boolean;
+  temporaryPassword?: boolean;
+  passwordExpiresAt?: string | null;
+  passwordResetAt?: string | null;
+  passwordResetBy?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -486,6 +491,11 @@ export async function getAllUsers(): Promise<UserRecord[]> {
           approvedBy: row.approved_by,
           rejectedAt: row.rejected_at,
           rejectionReason: row.rejection_reason,
+          mustChangePassword: Boolean(row.must_change_password),
+          temporaryPassword: Boolean(row.temporary_password),
+          passwordExpiresAt: row.password_expires_at,
+          passwordResetAt: row.password_reset_at,
+          passwordResetBy: row.password_reset_by,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         }));
@@ -585,6 +595,11 @@ export async function getUserByIdentifier(identifier: string): Promise<UserRecor
           approvedBy: row.approved_by,
           rejectedAt: row.rejected_at,
           rejectionReason: row.rejection_reason,
+          mustChangePassword: Boolean(row.must_change_password),
+          temporaryPassword: Boolean(row.temporary_password),
+          passwordExpiresAt: row.password_expires_at,
+          passwordResetAt: row.password_reset_at,
+          passwordResetBy: row.password_reset_by,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         };
@@ -701,6 +716,12 @@ export async function updateUser(userId: string, updates: Partial<UserRecord>): 
   if (updates.approvedBy !== undefined) dbUpdates.approved_by = updates.approvedBy;
   if (updates.rejectedAt !== undefined) dbUpdates.rejected_at = updates.rejectedAt;
   if (updates.rejectionReason !== undefined) dbUpdates.rejection_reason = updates.rejectionReason;
+  if (updates.password !== undefined) dbUpdates.password_hash = updates.password;
+  if (updates.mustChangePassword !== undefined) dbUpdates.must_change_password = updates.mustChangePassword;
+  if (updates.temporaryPassword !== undefined) dbUpdates.temporary_password = updates.temporaryPassword;
+  if (updates.passwordExpiresAt !== undefined) dbUpdates.password_expires_at = updates.passwordExpiresAt;
+  if (updates.passwordResetAt !== undefined) dbUpdates.password_reset_at = updates.passwordResetAt;
+  if (updates.passwordResetBy !== undefined) dbUpdates.password_reset_by = updates.passwordResetBy;
 
   if (supabase) {
     try {

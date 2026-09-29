@@ -17,6 +17,9 @@ export interface AuthenticatedAccount {
   aadhaarImage?: string;
   selfieImage?: string;
   profilePhoto?: string;
+  mustChangePassword?: boolean;
+  temporaryPassword?: boolean;
+  passwordExpiresAt?: string | null;
 }
 
 export interface UnifiedAuthResult {
@@ -24,6 +27,9 @@ export interface UnifiedAuthResult {
   errorMessage?: string;
   account?: AuthenticatedAccount;
   token?: string;
+  mustChangePassword?: boolean;
+  temporaryPassword?: boolean;
+  passwordExpired?: boolean;
 }
 
 /**
@@ -68,6 +74,16 @@ export const authenticateCredentials = async (
         success: true,
         account: data.account,
         token: data.token,
+        mustChangePassword: Boolean(data.account.mustChangePassword),
+        temporaryPassword: Boolean(data.account.temporaryPassword),
+      };
+    }
+
+    if (data && data.passwordExpired) {
+      return {
+        success: false,
+        passwordExpired: true,
+        errorMessage: data.errorMessage || 'Your temporary password has expired. Please contact Super Admin to generate a new password.',
       };
     }
 

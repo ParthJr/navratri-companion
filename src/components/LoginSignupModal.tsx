@@ -22,6 +22,7 @@ import {
   fetchFeeConfigurations,
   createPaymentOrderInDb,
   verifyPaymentInDb,
+  changeUserPassword,
   FeeConfiguration,
 } from '../services/dbService';
 import { PhotoUpload } from './PhotoUpload';
@@ -117,9 +118,20 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
   onAdminLoginSuccess,
   onOpenLegalPolicy,
 }) => {
-  // Mode state: 'login' | 'signup' | 'reg_payment'
-  const [mode, setMode] = useState<'login' | 'signup' | 'reg_payment'>(initialMode);
+  // Mode state: 'login' | 'signup' | 'reg_payment' | 'change_password'
+  const [mode, setMode] = useState<'login' | 'signup' | 'reg_payment' | 'change_password'>(initialMode);
   const [pendingAccount, setPendingAccount] = useState<RegisteredUserAccount | null>(null);
+  const [pendingChangePasswordAccount, setPendingChangePasswordAccount] = useState<{
+    account: any;
+    token?: string;
+    currentPassword: string;
+  } | null>(null);
+  const [changeCurrentPassword, setChangeCurrentPassword] = useState('');
+  const [changeNewPassword, setChangeNewPassword] = useState('');
+  const [changeConfirmPassword, setChangeConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
 
   // Legal Consent Checkboxes (Explicitly Unchecked by Default)
@@ -291,6 +303,20 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
         return;
       }
 
+      // Check if user is required to change their temporary password
+      if (result.mustChangePassword || result.account.mustChangePassword) {
+        setPendingChangePasswordAccount({
+          account: result.account,
+          token: result.token,
+          currentPassword: cleanPassword,
+        });
+        setChangeCurrentPassword(cleanPassword);
+        setChangeNewPassword('');
+        setChangeConfirmPassword('');
+        setMode('change_password');
+        return;
+      }
+
       // Check account role and create isolated session
       if (result.account.role === 'owner' || result.account.role === 'admin') {
         createSessionForAccount(result.account, result.token);
@@ -318,6 +344,105 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
     } catch (err) {
       setLoading(false);
       setErrorMessage('Invalid User ID or Password.');
+    }
+  };
+
+  // Handle Password Change Submission (Forces strong password requirements)
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!pendingChangePasswordAccount) {
+      setErrorMessage('Session expired. Please log in again.');
+      setMode('login');
+      return;
+    }
+
+    const currentPass = (changeCurrentPassword || pendingChangePasswordAccount.currentPassword).trim();
+    const newPass = changeNewPassword.trim();
+    const confirmPass = changeConfirmPassword.trim();
+
+    if (!currentPass || !newPass || !confirmPass) {
+      setErrorMessage('Please fill in all password fields.');
+      return;
+    }
+
+    if (newPass.length < 8) {
+      setErrorMessage('New password must be at least 8 characters long.');
+      return;
+    }
+    if (!/[A-Z]/.test(newPass)) {
+      setErrorMessage('New password must contain at least one uppercase letter (A-Z).');
+      return;
+    }
+    if (!/[a-z]/.test(newPass)) {
+      setErrorMessage('New password must contain at least one lowercase letter (a-z).');
+      return;
+    }
+    if (!/[0-9]/.test(newPass)) {
+      setErrorMessage('New password must contain at least one number (0-9).');
+      return;
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPass)) {
+      setErrorMessage('New password must contain at least one special character (!@#$%^&* etc.).');
+      return;
+    }
+    if (newPass === currentPass) {
+      setErrorMessage('New password cannot be the same as your temporary password.');
+      return;
+    }
+    if (newPass !== confirmPass) {
+      setErrorMessage('New passwords do not match. Please verify.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await changeUserPassword({
+        userId: pendingChangePasswordAccount.account.userId || pendingChangePasswordAccount.account.id,
+        currentPassword: currentPass,
+        newPassword: newPass,
+        confirmPassword: confirmPass,
+      });
+
+      setLoading(false);
+      if (!res.success) {
+        setErrorMessage(res.errorMessage || 'Failed to update password.');
+        return;
+      }
+
+      // Password successfully changed! Proceed with login
+      const updatedAccount = {
+        ...pendingChangePasswordAccount.account,
+        mustChangePassword: false,
+        temporaryPassword: false,
+      };
+
+      if (updatedAccount.role === 'owner' || updatedAccount.role === 'admin') {
+        createSessionForAccount(updatedAccount, pendingChangePasswordAccount.token);
+        adminLogin(updatedAccount.userId, newPass);
+        if (onAdminLoginSuccess) {
+          onAdminLoginSuccess();
+        } else {
+          window.location.href = '/super-admin';
+        }
+        return;
+      }
+
+      createSessionForAccount(updatedAccount);
+      onSuccess(
+        updatedAccount.name,
+        updatedAccount.phone,
+        updatedAccount.email,
+        updatedAccount.aadhaarImage,
+        updatedAccount.selfieImage,
+        updatedAccount.feePaid ?? true,
+        updatedAccount.userId,
+        updatedAccount.role === 'customer' ? 'user' : updatedAccount.role
+      );
+    } catch (err: any) {
+      setLoading(false);
+      setErrorMessage(err.message || 'Error updating password. Please try again.');
     }
   };
 
@@ -591,11 +716,13 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
               {mode === 'login' && 'Login'}
               {mode === 'signup' && 'Sign Up'}
               {mode === 'reg_payment' && `Pay ₹${orderDetails?.amount ?? (pendingAccount?.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee) ?? 499} Registration Fee`}
+              {mode === 'change_password' && 'Create New Password'}
             </h3>
             <p className="text-[11px] sm:text-xs text-[#596579] truncate">
               {mode === 'login' && 'Enter your User ID or Email and Password'}
               {mode === 'signup' && 'Create your User ID and Password to get started'}
               {mode === 'reg_payment' && 'Official UPI Gateway • Complete payment to activate account'}
+              {mode === 'change_password' && 'Update your temporary password to continue'}
             </p>
           </div>
           <button
@@ -1319,6 +1446,162 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                   After clicking, your transaction is verified and registered on the secure platform.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* ======================= CHANGE TEMPORARY PASSWORD FORM ======================= */}
+          {mode === 'change_password' && pendingChangePasswordAccount && (
+            <div>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 mb-4 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-900">Temporary Password Login Detected</p>
+                  <p className="text-[11px] text-amber-700 mt-0.5">
+                    For your security, you must set a new permanent password to access your account (@{pendingChangePasswordAccount.account.userId || pendingChangePasswordAccount.account.id}).
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5">
+                {/* Current Temporary Password */}
+                <div>
+                  <label className="text-xs font-semibold text-[#12001f] block mb-1">
+                    Current Temporary Password
+                  </label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-[#596579] absolute left-3.5 pointer-events-none" />
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      required
+                      value={changeCurrentPassword || pendingChangePasswordAccount.currentPassword}
+                      onChange={(e) => {
+                        setChangeCurrentPassword(e.target.value);
+                        setErrorMessage(null);
+                      }}
+                      placeholder="Temporary password from admin"
+                      className="w-full min-h-[44px] text-sm bg-slate-50 border border-[#cec3ce]/60 pl-10 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#311042]/20 focus:border-[#311042]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 text-[#596579] hover:text-[#12001f] p-1 cursor-pointer"
+                    >
+                      {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* New Password */}
+                <div>
+                  <label className="text-xs font-semibold text-[#12001f] block mb-1">
+                    New Permanent Password
+                  </label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-[#596579] absolute left-3.5 pointer-events-none" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      value={changeNewPassword}
+                      onChange={(e) => {
+                        setChangeNewPassword(e.target.value);
+                        setErrorMessage(null);
+                      }}
+                      placeholder="Enter strong new password"
+                      className="w-full min-h-[44px] text-sm bg-slate-50 border border-[#cec3ce]/60 pl-10 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#311042]/20 focus:border-[#311042]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 text-[#596579] hover:text-[#12001f] p-1 cursor-pointer"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Confirm New Password */}
+                <div>
+                  <label className="text-xs font-semibold text-[#12001f] block mb-1">
+                    Confirm New Password
+                  </label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-[#596579] absolute left-3.5 pointer-events-none" />
+                    <input
+                      type={showConfirmNewPassword ? 'text' : 'password'}
+                      required
+                      value={changeConfirmPassword}
+                      onChange={(e) => {
+                        setChangeConfirmPassword(e.target.value);
+                        setErrorMessage(null);
+                      }}
+                      placeholder="Re-enter new password"
+                      className="w-full min-h-[44px] text-sm bg-slate-50 border border-[#cec3ce]/60 pl-10 pr-10 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#311042]/20 focus:border-[#311042]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                      className="absolute right-3 text-[#596579] hover:text-[#12001f] p-1 cursor-pointer"
+                    >
+                      {showConfirmNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Password Requirements Checklist */}
+                <div className="p-3 bg-slate-50 border border-[#cec3ce]/40 rounded-xl space-y-1.5 text-[11px]">
+                  <p className="font-semibold text-slate-700 mb-1">Password Requirements:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    <div className={`flex items-center gap-1.5 ${changeNewPassword.length >= 8 ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                      <CheckCircle2 className={`w-3 h-3 ${changeNewPassword.length >= 8 ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span>At least 8 characters</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${/[A-Z]/.test(changeNewPassword) ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                      <CheckCircle2 className={`w-3 h-3 ${/[A-Z]/.test(changeNewPassword) ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span>1 uppercase letter (A-Z)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${/[a-z]/.test(changeNewPassword) ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                      <CheckCircle2 className={`w-3 h-3 ${/[a-z]/.test(changeNewPassword) ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span>1 lowercase letter (a-z)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${/[0-9]/.test(changeNewPassword) ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                      <CheckCircle2 className={`w-3 h-3 ${/[0-9]/.test(changeNewPassword) ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span>1 number (0-9)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(changeNewPassword) ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                      <CheckCircle2 className={`w-3 h-3 ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(changeNewPassword) ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span>1 special symbol</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${changeNewPassword && changeNewPassword === changeConfirmPassword ? 'text-emerald-700 font-medium' : 'text-slate-500'}`}>
+                      <CheckCircle2 className={`w-3 h-3 ${changeNewPassword && changeNewPassword === changeConfirmPassword ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      <span>Passwords match</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Submit button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full min-h-[46px] bg-[#311042] hover:bg-[#481661] text-white py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-md shadow-[#311042]/20 disabled:opacity-60 cursor-pointer text-sm"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>{loading ? 'Updating Password...' : 'Save Password & Enter Account'}</span>
+                </button>
+
+                <div className="text-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingChangePasswordAccount(null);
+                      setMode('login');
+                      setErrorMessage(null);
+                    }}
+                    className="text-xs text-[#596579] hover:text-[#12001f] underline cursor-pointer"
+                  >
+                    Back to Login
+                  </button>
+                </div>
+              </form>
             </div>
           )}
         </div>
