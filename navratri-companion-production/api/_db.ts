@@ -97,6 +97,60 @@ export interface PaymentRecord {
   notes?: string | null;
 }
 
+export interface FeeConfiguration {
+  id: string;
+  feeCode: string; // 'COMPANION_REGISTRATION' | 'CUSTOMER_REGISTRATION' | 'CUSTOMER_PLATFORM_FEE' | 'COMPANION_PLATFORM_FEE'
+  feeName: string;
+  applicableRole: 'COMPANION' | 'CUSTOMER';
+  amount: number;
+  currency: string;
+  gstEnabled: boolean;
+  gstPercentage: number;
+  status: 'ACTIVE' | 'INACTIVE';
+  effectiveFrom: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentTransactionRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  userPhone?: string;
+  userRole: 'COMPANION' | 'CUSTOMER';
+  feeConfigurationId?: string;
+  feeCode: string; // 'COMPANION_REGISTRATION' | 'CUSTOMER_REGISTRATION' | 'CUSTOMER_PLATFORM_FEE' | 'COMPANION_PLATFORM_FEE' | 'BOOKING_ESCROW'
+  feeName: string;
+  baseAmount: number;
+  gstAmount: number;
+  totalAmount: number;
+  currency: string;
+  status: 'INITIATED' | 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'WAIVED';
+  gateway: string; // 'RAZORPAY' | 'UPI_GATEWAY' | 'DIRECT_UPI' | 'ADMIN_OVERRIDE'
+  orderId: string;
+  paymentId: string;
+  transactionId: string;
+  gatewayReferenceId?: string;
+  paymentMethod: string;
+  paidAt?: string | null;
+  waivedBy?: string | null;
+  waiveReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  notes?: string | null;
+}
+
+export interface PaymentAuditLogRecord {
+  id: string;
+  paymentTransactionId?: string;
+  action: string;
+  performedBy: string;
+  affectedUserId?: string;
+  metadata?: any;
+  createdAt: string;
+}
+
 export interface UserProfileRecord {
   id?: string;
   userId: string;
@@ -261,10 +315,72 @@ export function getPostgresPool() {
 const DATA_DIR = path.resolve(process.cwd(), '.data');
 const DB_FILE = path.join(DATA_DIR, 'resilient_store.json');
 
+export const DEFAULT_FEE_CONFIGURATIONS: FeeConfiguration[] = [
+  {
+    id: 'fee_comp_reg',
+    feeCode: 'COMPANION_REGISTRATION',
+    feeName: 'Companion Registration Fee',
+    applicableRole: 'COMPANION',
+    amount: 499,
+    currency: 'INR',
+    gstEnabled: true,
+    gstPercentage: 18,
+    status: 'ACTIVE',
+    effectiveFrom: '2026-09-01T00:00:00.000Z',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-29T00:00:00.000Z',
+  },
+  {
+    id: 'fee_cust_reg',
+    feeCode: 'CUSTOMER_REGISTRATION',
+    feeName: 'Customer Registration Fee',
+    applicableRole: 'CUSTOMER',
+    amount: 0,
+    currency: 'INR',
+    gstEnabled: false,
+    gstPercentage: 0,
+    status: 'ACTIVE',
+    effectiveFrom: '2026-09-01T00:00:00.000Z',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-29T00:00:00.000Z',
+  },
+  {
+    id: 'fee_cust_plat',
+    feeCode: 'CUSTOMER_PLATFORM_FEE',
+    feeName: 'Customer Booking Platform Fee',
+    applicableRole: 'CUSTOMER',
+    amount: 50,
+    currency: 'INR',
+    gstEnabled: true,
+    gstPercentage: 18,
+    status: 'ACTIVE',
+    effectiveFrom: '2026-09-01T00:00:00.000Z',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-29T00:00:00.000Z',
+  },
+  {
+    id: 'fee_comp_plat',
+    feeCode: 'COMPANION_PLATFORM_FEE',
+    feeName: 'Companion Platform Fee',
+    applicableRole: 'COMPANION',
+    amount: 0,
+    currency: 'INR',
+    gstEnabled: false,
+    gstPercentage: 0,
+    status: 'ACTIVE',
+    effectiveFrom: '2026-09-01T00:00:00.000Z',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-29T00:00:00.000Z',
+  },
+];
+
 interface ResilientStore {
   users: Record<string, UserRecord>;
   applications: Record<string, HostApplicantRecord>;
   payments: Record<string, PaymentRecord>;
+  paymentTransactions: Record<string, PaymentTransactionRecord>;
+  feeConfigurations: Record<string, FeeConfiguration>;
+  paymentAuditLogs: Record<string, PaymentAuditLogRecord>;
   bookings: Record<string, BookingRecord>;
   payouts: Record<string, PayoutRecord>;
   complaints: Record<string, ComplaintRecord>;
@@ -272,22 +388,35 @@ interface ResilientStore {
 }
 
 function loadResilientStore(): ResilientStore {
+  let loaded: any = {};
   try {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
-      return JSON.parse(raw);
+      loaded = JSON.parse(raw);
     }
   } catch (e) {
     // Ignore read errors
   }
+
+  const initialFeeConfigs: Record<string, FeeConfiguration> = {};
+  DEFAULT_FEE_CONFIGURATIONS.forEach((f) => {
+    initialFeeConfigs[f.feeCode] = f;
+  });
+
   return {
-    users: {},
-    applications: {},
-    payments: {},
-    bookings: {},
-    payouts: {},
-    complaints: {},
-    profiles: {},
+    users: loaded.users || {},
+    applications: loaded.applications || {},
+    payments: loaded.payments || {},
+    paymentTransactions: loaded.paymentTransactions || {},
+    feeConfigurations: {
+      ...initialFeeConfigs,
+      ...(loaded.feeConfigurations || {}),
+    },
+    paymentAuditLogs: loaded.paymentAuditLogs || {},
+    bookings: loaded.bookings || {},
+    payouts: loaded.payouts || {},
+    complaints: loaded.complaints || {},
+    profiles: loaded.profiles || {},
   };
 }
 
@@ -763,6 +892,565 @@ export async function updatePayment(
   persistStore();
 
   return updated;
+}
+
+// ============================================================================
+// FEE CONFIGURATIONS & PAYMENT TRANSACTIONS CRUD (Role-Based Dynamic Pricing)
+// ============================================================================
+
+export async function getFeeConfigurations(): Promise<FeeConfiguration[]> {
+  const supabase = getSupabaseClient();
+  let dbFees: FeeConfiguration[] = [];
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('fee_configurations')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        dbFees = data.map((row: any) => ({
+          id: row.id,
+          feeCode: row.fee_code,
+          feeName: row.fee_name,
+          applicableRole: (row.applicable_role || 'CUSTOMER').toUpperCase() as any,
+          amount: Number(row.amount) || 0,
+          currency: row.currency || 'INR',
+          gstEnabled: Boolean(row.gst_enabled),
+          gstPercentage: Number(row.gst_percentage) || 0,
+          status: (row.status || 'ACTIVE').toUpperCase() as any,
+          effectiveFrom: row.effective_from || row.created_at,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }));
+      }
+    } catch (e: any) {
+      // Supabase table fallback
+    }
+  }
+
+  const combined = new Map<string, FeeConfiguration>();
+  // Seed with defaults
+  DEFAULT_FEE_CONFIGURATIONS.forEach((f) => combined.set(f.feeCode, f));
+  // Override with resilient store
+  Object.values(storeMemory.feeConfigurations || {}).forEach((f) => combined.set(f.feeCode, f));
+  // Override with database if present
+  dbFees.forEach((f) => combined.set(f.feeCode, f));
+
+  return Array.from(combined.values());
+}
+
+export async function getFeeByCode(feeCode: string): Promise<FeeConfiguration> {
+  const fees = await getFeeConfigurations();
+  const matched = fees.find((f) => f.feeCode === feeCode);
+  if (matched) return matched;
+
+  // Fallback to default
+  const defaultFee = DEFAULT_FEE_CONFIGURATIONS.find((f) => f.feeCode === feeCode);
+  if (defaultFee) return defaultFee;
+
+  return {
+    id: `fee_${feeCode.toLowerCase()}`,
+    feeCode,
+    feeName: feeCode.replace(/_/g, ' '),
+    applicableRole: feeCode.includes('COMPANION') ? 'COMPANION' : 'CUSTOMER',
+    amount: feeCode.includes('COMPANION_REGISTRATION') ? 499 : 0,
+    currency: 'INR',
+    gstEnabled: feeCode.includes('REGISTRATION') || feeCode.includes('PLATFORM'),
+    gstPercentage: 18,
+    status: 'ACTIVE',
+    effectiveFrom: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function updateFeeConfigurationRecord(
+  feeCode: string,
+  updates: Partial<FeeConfiguration>,
+  adminId: string = 'superadmin'
+): Promise<FeeConfiguration> {
+  const current = await getFeeByCode(feeCode);
+  const now = new Date().toISOString();
+
+  const updated: FeeConfiguration = {
+    ...current,
+    ...updates,
+    updatedAt: now,
+  };
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase.from('fee_configurations').upsert(
+        {
+          id: updated.id,
+          fee_code: updated.feeCode,
+          fee_name: updated.feeName,
+          applicable_role: updated.applicableRole,
+          amount: updated.amount,
+          currency: updated.currency,
+          gst_enabled: updated.gstEnabled,
+          gst_percentage: updated.gstPercentage,
+          status: updated.status,
+          effective_from: updated.effectiveFrom,
+          created_at: updated.createdAt,
+          updated_at: now,
+        },
+        { onConflict: 'fee_code' }
+      );
+    } catch (e: any) {
+      // Retained in resilient store
+    }
+  }
+
+  storeMemory.feeConfigurations[feeCode] = updated;
+  persistStore();
+
+  // Financial Audit Logging
+  await logPaymentAuditRecord(
+    'FEE_CONFIGURATION_UPDATED',
+    adminId,
+    undefined,
+    {
+      feeCode,
+      oldAmount: current.amount,
+      newAmount: updated.amount,
+      oldStatus: current.status,
+      newStatus: updated.status,
+      gstEnabled: updated.gstEnabled,
+      gstPercentage: updated.gstPercentage,
+    }
+  );
+
+  return updated;
+}
+
+export async function getAllPaymentTransactions(): Promise<PaymentTransactionRecord[]> {
+  const supabase = getSupabaseClient();
+  let dbTxns: PaymentTransactionRecord[] = [];
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('payment_transactions')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        dbTxns = data.map((row: any) => ({
+          id: row.id,
+          userId: row.user_id,
+          userName: row.user_name || 'Customer / Companion',
+          userEmail: row.user_email,
+          userPhone: row.user_phone,
+          userRole: (row.user_role || 'CUSTOMER').toUpperCase() as any,
+          feeConfigurationId: row.fee_configuration_id,
+          feeCode: row.fee_code || 'COMPANION_REGISTRATION',
+          feeName: row.fee_name || 'Registration Fee',
+          baseAmount: Number(row.base_amount || row.amount || 0),
+          gstAmount: Number(row.gst_amount || 0),
+          totalAmount: Number(row.total_amount || row.amount || 0),
+          currency: row.currency || 'INR',
+          status: (row.status || 'PENDING').toUpperCase() as any,
+          gateway: row.gateway || 'RAZORPAY',
+          orderId: row.order_id || row.id,
+          paymentId: row.payment_id || '',
+          transactionId: row.transaction_id || row.payment_id || '',
+          gatewayReferenceId: row.gateway_reference_id,
+          paymentMethod: row.payment_method || 'UPI',
+          paidAt: row.paid_at,
+          waivedBy: row.waived_by,
+          waiveReason: row.waive_reason,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          notes: row.notes,
+        }));
+      }
+    } catch (e: any) {
+      // Fallback
+    }
+  }
+
+  const combined = new Map<string, PaymentTransactionRecord>();
+  // 1. From database payment_transactions
+  for (const t of dbTxns) {
+    combined.set(t.id, t);
+    if (t.orderId) combined.set(t.orderId, t);
+  }
+  // 2. From resilient store paymentTransactions
+  for (const t of Object.values(storeMemory.paymentTransactions || {})) {
+    if (!combined.has(t.id)) {
+      combined.set(t.id, t);
+    }
+  }
+  // 3. Fallback backward compatibility: map registration_payments into transactions if not already tracked
+  for (const p of Object.values(storeMemory.payments || {})) {
+    const txnId = `txn_${p.id}`;
+    if (!combined.has(txnId) && !combined.has(p.id)) {
+      const user = storeMemory.users[p.userId.toLowerCase()];
+      const isApproved = p.paymentStatus === 'APPROVED';
+      combined.set(p.id, {
+        id: p.id,
+        userId: p.userId,
+        userName: user?.name || p.userId,
+        userEmail: user?.email,
+        userPhone: user?.phone,
+        userRole: user?.role === 'companion' ? 'COMPANION' : 'CUSTOMER',
+        feeCode: user?.role === 'companion' ? 'COMPANION_REGISTRATION' : 'CUSTOMER_REGISTRATION',
+        feeName: user?.role === 'companion' ? 'Companion Registration Fee' : 'Customer Registration Fee',
+        baseAmount: p.amount || 499,
+        gstAmount: 0,
+        totalAmount: p.amount || 499,
+        currency: 'INR',
+        status: isApproved ? 'PAID' : p.paymentStatus === 'REJECTED' ? 'FAILED' : 'PENDING',
+        gateway: 'RAZORPAY',
+        orderId: `order_${p.id}`,
+        paymentId: p.paymentReference || '',
+        transactionId: p.paymentReference || p.id,
+        paymentMethod: p.paymentMethod || 'UPI',
+        paidAt: isApproved ? (p.approvedAt || p.submittedAt) : null,
+        createdAt: p.createdAt || p.submittedAt,
+        updatedAt: p.updatedAt || p.submittedAt,
+        notes: p.notes,
+      });
+    }
+  }
+
+  return Array.from(new Set(combined.values())).sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+}
+
+export async function createPaymentTransactionRecord(
+  tx: PaymentTransactionRecord
+): Promise<PaymentTransactionRecord> {
+  const supabase = getSupabaseClient();
+  const now = new Date().toISOString();
+
+  const record: PaymentTransactionRecord = {
+    ...tx,
+    createdAt: tx.createdAt || now,
+    updatedAt: now,
+  };
+
+  if (supabase) {
+    try {
+      await supabase.from('payment_transactions').upsert(
+        {
+          id: record.id,
+          user_id: record.userId,
+          user_name: record.userName,
+          user_email: record.userEmail,
+          user_phone: record.userPhone,
+          user_role: record.userRole,
+          fee_configuration_id: record.feeConfigurationId,
+          fee_code: record.feeCode,
+          fee_name: record.feeName,
+          base_amount: record.baseAmount,
+          gst_amount: record.gstAmount,
+          total_amount: record.totalAmount,
+          currency: record.currency,
+          status: record.status,
+          gateway: record.gateway,
+          order_id: record.orderId,
+          payment_id: record.paymentId,
+          transaction_id: record.transactionId,
+          gateway_reference_id: record.gatewayReferenceId,
+          payment_method: record.paymentMethod,
+          paid_at: record.paidAt,
+          waived_by: record.waivedBy,
+          waive_reason: record.waiveReason,
+          created_at: record.createdAt,
+          updated_at: now,
+          notes: record.notes,
+        },
+        { onConflict: 'id' }
+      );
+    } catch (e: any) {
+      // Handled via resilient store
+    }
+  }
+
+  storeMemory.paymentTransactions[record.id] = record;
+  storeMemory.paymentTransactions[record.orderId] = record;
+  persistStore();
+
+  // Also sync to registration_payments for backward compatibility if registration fee
+  if (record.feeCode.includes('REGISTRATION')) {
+    await createPayment({
+      id: record.id,
+      userId: record.userId,
+      amount: record.totalAmount,
+      paymentMethod: record.paymentMethod,
+      paymentReference: record.transactionId || record.paymentId || record.orderId,
+      paymentStatus: record.status === 'PAID' ? 'APPROVED' : record.status === 'FAILED' ? 'REJECTED' : 'PENDING',
+      submittedAt: record.createdAt,
+      approvedAt: record.paidAt,
+      createdAt: record.createdAt,
+      updatedAt: now,
+      notes: record.notes || `Gateway: ${record.gateway} | Txn: ${record.transactionId}`,
+    });
+  }
+
+  return record;
+}
+
+export async function updatePaymentTransactionRecord(
+  orderIdOrId: string,
+  updates: Partial<PaymentTransactionRecord>
+): Promise<PaymentTransactionRecord> {
+  const existing = (await getTransactionByOrderId(orderIdOrId)) || (await getTransactionById(orderIdOrId));
+  const now = new Date().toISOString();
+
+  const updated: PaymentTransactionRecord = {
+    ...(existing || {
+      id: orderIdOrId,
+      userId: updates.userId || 'guest',
+      userName: updates.userName || 'Customer',
+      userRole: 'COMPANION',
+      feeCode: 'COMPANION_REGISTRATION',
+      feeName: 'Companion Registration Fee',
+      baseAmount: updates.baseAmount || 499,
+      gstAmount: updates.gstAmount || 0,
+      totalAmount: updates.totalAmount || 499,
+      currency: 'INR',
+      status: 'PENDING',
+      gateway: 'RAZORPAY',
+      orderId: orderIdOrId,
+      paymentId: '',
+      transactionId: '',
+      paymentMethod: 'UPI',
+      createdAt: now,
+      updatedAt: now,
+    }),
+    ...updates,
+    updatedAt: now,
+  };
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase
+        .from('payment_transactions')
+        .update({
+          status: updated.status,
+          payment_id: updated.paymentId,
+          transaction_id: updated.transactionId,
+          gateway_reference_id: updated.gatewayReferenceId,
+          payment_method: updated.paymentMethod,
+          paid_at: updated.paidAt,
+          waived_by: updated.waivedBy,
+          waive_reason: updated.waiveReason,
+          updated_at: now,
+          notes: updated.notes,
+        })
+        .or(`id.eq.${orderIdOrId},order_id.eq.${orderIdOrId}`);
+    } catch (e: any) {
+      // Store fallback
+    }
+  }
+
+  storeMemory.paymentTransactions[updated.id] = updated;
+  if (updated.orderId) {
+    storeMemory.paymentTransactions[updated.orderId] = updated;
+  }
+  persistStore();
+
+  // Backward compatibility with registration_payments
+  if (updated.feeCode.includes('REGISTRATION')) {
+    await updatePayment(updated.userId, {
+      paymentStatus: updated.status === 'PAID' ? 'APPROVED' : updated.status === 'FAILED' ? 'REJECTED' : 'PENDING',
+      approvedAt: updated.paidAt,
+      paymentReference: updated.transactionId || updated.paymentId,
+    });
+  }
+
+  return updated;
+}
+
+export async function getTransactionByOrderId(orderId: string): Promise<PaymentTransactionRecord | null> {
+  const direct = storeMemory.paymentTransactions[orderId];
+  if (direct) return direct;
+
+  for (const t of Object.values(storeMemory.paymentTransactions)) {
+    if (t.orderId === orderId) return t;
+  }
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('payment_transactions')
+        .select('*')
+        .eq('order_id', orderId)
+        .single();
+
+      if (!error && data) {
+        return {
+          id: data.id,
+          userId: data.user_id,
+          userName: data.user_name,
+          userEmail: data.user_email,
+          userPhone: data.user_phone,
+          userRole: data.user_role,
+          feeCode: data.fee_code,
+          feeName: data.fee_name,
+          baseAmount: Number(data.base_amount),
+          gstAmount: Number(data.gst_amount),
+          totalAmount: Number(data.total_amount),
+          currency: data.currency,
+          status: data.status,
+          gateway: data.gateway,
+          orderId: data.order_id,
+          paymentId: data.payment_id,
+          transactionId: data.transaction_id,
+          gatewayReferenceId: data.gateway_reference_id,
+          paymentMethod: data.payment_method,
+          paidAt: data.paid_at,
+          waivedBy: data.waived_by,
+          waiveReason: data.waive_reason,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+          notes: data.notes,
+        };
+      }
+    } catch (e: any) {}
+  }
+
+  return null;
+}
+
+export async function getTransactionById(id: string): Promise<PaymentTransactionRecord | null> {
+  if (storeMemory.paymentTransactions[id]) return storeMemory.paymentTransactions[id];
+  const all = await getAllPaymentTransactions();
+  return all.find((t) => t.id === id) || null;
+}
+
+export async function waiveUserFeeRecord(
+  userId: string,
+  feeCode: string,
+  reason: string,
+  adminId: string = 'superadmin'
+): Promise<{ success: boolean; transaction: PaymentTransactionRecord; user: UserRecord }> {
+  const user = await getUserByIdentifier(userId);
+  if (!user) {
+    throw new Error(`User ${userId} not found`);
+  }
+
+  const feeConfig = await getFeeByCode(feeCode);
+  const now = new Date().toISOString();
+  const txnId = `txn_waive_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const transactionRecord: PaymentTransactionRecord = {
+    id: txnId,
+    userId: user.userId,
+    userName: user.name,
+    userEmail: user.email,
+    userPhone: user.phone,
+    userRole: user.role === 'companion' ? 'COMPANION' : 'CUSTOMER',
+    feeConfigurationId: feeConfig.id,
+    feeCode: feeConfig.feeCode,
+    feeName: feeConfig.feeName,
+    baseAmount: feeConfig.amount,
+    gstAmount: 0,
+    totalAmount: 0, // Waived amount is ₹0 charged
+    currency: 'INR',
+    status: 'WAIVED',
+    gateway: 'ADMIN_OVERRIDE',
+    orderId: `waive_${Date.now()}`,
+    paymentId: `waived_by_${adminId}`,
+    transactionId: `WAIVE-${Date.now()}`,
+    paymentMethod: 'WAIVED',
+    paidAt: now,
+    waivedBy: adminId,
+    waiveReason: reason,
+    createdAt: now,
+    updatedAt: now,
+    notes: `Fee manually waived by Admin (${adminId}). Reason: ${reason}`,
+  };
+
+  await createPaymentTransactionRecord(transactionRecord);
+
+  // Update user in central database
+  const updatedUser = await updateUser(user.userId, {
+    accountStatus: 'active',
+    paymentStatus: 'Approved',
+    feePaid: true,
+    loginEnabled: true,
+    approvedAt: now,
+    approvedBy: adminId,
+  });
+
+  // If host application exists, approve fee status
+  try {
+    await updateApplicationRecord(user.userId, {
+      registrationFeePaid: true,
+    });
+  } catch (e) {}
+
+  // Financial Audit Logging
+  await logPaymentAuditRecord(
+    'FEE_WAIVED',
+    adminId,
+    user.userId,
+    {
+      feeCode,
+      amountWaived: feeConfig.amount,
+      reason,
+      transactionId: transactionRecord.transactionId,
+    },
+    transactionRecord.id
+  );
+
+  return { success: true, transaction: transactionRecord, user: updatedUser };
+}
+
+export async function logPaymentAuditRecord(
+  action: string,
+  performedBy: string,
+  affectedUserId?: string,
+  metadata?: any,
+  paymentTransactionId?: string
+): Promise<PaymentAuditLogRecord> {
+  const now = new Date().toISOString();
+  const id = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const record: PaymentAuditLogRecord = {
+    id,
+    paymentTransactionId,
+    action,
+    performedBy,
+    affectedUserId,
+    metadata,
+    createdAt: now,
+  };
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase.from('audit_logs').insert({
+        id,
+        action,
+        admin_id: performedBy,
+        user_id: affectedUserId,
+        details: JSON.stringify(metadata || {}),
+        created_at: now,
+      });
+    } catch (e: any) {}
+  }
+
+  storeMemory.paymentAuditLogs[id] = record;
+  persistStore();
+
+  return record;
+}
+
+export async function getPaymentAuditLogs(): Promise<PaymentAuditLogRecord[]> {
+  return Object.values(storeMemory.paymentAuditLogs || {}).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 // ============================================================================

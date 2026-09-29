@@ -16,8 +16,14 @@ import {
 import { DynamicUpiQr } from './DynamicUpiQr';
 import { getPlatformUpiConfig, generatePaymentReference } from '../utils/upi';
 import { useSuperAdmin } from '../super-admin/context/SuperAdminContext';
-import { authenticateCredentials, createSessionForAccount } from '../services/unifiedAuth';
-import { registerUserInDb, submitRegistrationPaymentToDb } from '../services/dbService';
+import {
+  registerUserInDb,
+  submitRegistrationPaymentToDb,
+  fetchFeeConfigurations,
+  createPaymentOrderInDb,
+  verifyPaymentInDb,
+  FeeConfiguration,
+} from '../services/dbService';
 import { PhotoUpload } from './PhotoUpload';
 
 // Helper to calculate age from Date of Birth
@@ -159,7 +165,38 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
-  const { login: adminLogin, addCustomer } = useSuperAdmin();
+  // Fee Configuration & Order Tracking State
+  const [feeConfigs, setFeeConfigs] = useState<{
+    companionFee: number;
+    customerFee: number;
+    fees: FeeConfiguration[];
+  }>({
+    companionFee: 499,
+    customerFee: 0,
+    fees: [],
+  });
+  const [orderDetails, setOrderDetails] = useState<{
+    orderId?: string;
+    amount?: number;
+    baseAmount?: number;
+    gstAmount?: number;
+    currency?: string;
+    keyId?: string;
+  } | null>(null);
+  const [enteredTxnId, setEnteredTxnId] = useState('');
+
+  // Fetch active fee structures dynamically
+  useEffect(() => {
+    fetchFeeConfigurations().then((res) => {
+      if (res && res.success) {
+        setFeeConfigs({
+          companionFee: res.companionRegistrationFee ?? 499,
+          customerFee: res.customerRegistrationFee ?? 0,
+          fees: res.fees || [],
+        });
+      }
+    });
+  }, []);
 
   // Reset all fields whenever the modal opens or initialMode changes
   useEffect(() => {
@@ -187,6 +224,8 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
     setErrorMessage(null);
     setSuccessBanner(null);
     setPendingAccount(null);
+    setOrderDetails(null);
+    setEnteredTxnId('');
     setAgreeTerms(false);
     setAgreePrivacy(false);
     setAgreeGuidelines(false);
@@ -430,11 +469,50 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
         return;
       }
 
+      // If customer has 0 registration fee, complete signup immediately!
+      if (signupRole === 'customer' && (feeConfigs.customerFee <= 0)) {
+        setLoading(false);
+        setMode('login');
+        setSuccessBanner('Account created successfully! Please enter your password to login.');
+        setLoginIdentifier(userId);
+        setLoginPassword('');
+        setPendingAccount(null);
+        // Reset signup form
+        setSignupName('');
+        setSignupPhone('');
+        setSignupEmail('');
+        setSignupUserId('');
+        setSignupPassword('');
+        setSignupConfirmPassword('');
+        setSignupProfilePhoto(null);
+        setSignupDob('');
+        setSignupAge('');
+        setSignupBio('');
+        setSignupAadhaarImage(null);
+        setSignupSelfieImage(null);
+        setSignupIdDocument('');
+        return;
+      }
+
+      // Role requires registration fee (e.g. Companion ₹499 or dynamic fee)
+      const feeCode = signupRole === 'companion' ? 'COMPANION_REGISTRATION' : 'CUSTOMER_REGISTRATION';
+      const orderRes = await createPaymentOrderInDb(userId, feeCode, 'UPI');
+      if (orderRes && orderRes.success) {
+        setOrderDetails({
+          orderId: orderRes.orderId,
+          amount: orderRes.amount,
+          baseAmount: orderRes.baseAmount,
+          gstAmount: orderRes.gstAmount,
+          currency: orderRes.currency,
+          keyId: orderRes.keyId,
+        });
+      }
+
       setLoading(false);
       setPendingAccount(newAccount);
       setMode('reg_payment');
 
-      // Reset signup form completely
+      // Reset signup form
       setSignupName('');
       setSignupPhone('');
       setSignupEmail('');
@@ -454,33 +532,46 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
     }
   };
 
-  // Handle Registration Fee Payment Submission -> Awaits Admin Confirmation
+  // Handle Registration Fee Payment Submission -> Verifies & Records Transaction ID
   const handleRegPaymentConfirm = async () => {
     if (!pendingAccount) return;
     setLoading(true);
+    setErrorMessage(null);
 
-    const paymentRef = generatePaymentReference(pendingAccount.userId, 'REG');
-    const regFee = getPlatformUpiConfig().registrationFee || 499;
+    const fallbackRef = generatePaymentReference(pendingAccount.userId, 'REG');
+    const finalTxnId = (enteredTxnId || '').trim() || fallbackRef;
+    const finalAmount = orderDetails?.amount ?? (pendingAccount.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee) ?? 499;
 
     try {
-      // 1. Submit payment strictly to Central Persistent Database
-      const payResult = await submitRegistrationPaymentToDb(pendingAccount.userId, paymentRef, regFee, 'UPI');
+      if (orderDetails?.orderId) {
+        const verifyRes = await verifyPaymentInDb({
+          orderId: orderDetails.orderId,
+          transactionId: finalTxnId,
+          paymentId: finalTxnId,
+          paymentMethod: 'UPI',
+          userId: pendingAccount.userId,
+        });
 
-      if (!payResult.success) {
-        setLoading(false);
-        setErrorMessage(payResult.errorMessage || 'Unable to record your payment reference in the central database. Please try again.');
-        return;
+        if (!verifyRes.success) {
+          setLoading(false);
+          setErrorMessage(verifyRes.errorMessage || 'Payment verification failed. Please check transaction ID and try again.');
+          return;
+        }
       }
+
+      // Record in registration_payments for legacy sync
+      await submitRegistrationPaymentToDb(pendingAccount.userId, finalTxnId, finalAmount, 'UPI');
 
       setLoading(false);
       setMode('login');
-      // Keep login fields completely empty so user logs in cleanly
-      setLoginIdentifier('');
+      setLoginIdentifier(pendingAccount.userId);
       setLoginPassword('');
-      setErrorMessage(
-        'Payment submitted successfully. Awaiting admin approval. Your account will be activated once confirmed.'
+      setSuccessBanner(
+        `Registration fee submitted (Txn ID: ${finalTxnId}). Verification recorded. Please log in.`
       );
       setPendingAccount(null);
+      setOrderDetails(null);
+      setEnteredTxnId('');
     } catch (err: any) {
       setLoading(false);
       setErrorMessage('Failed to submit payment reference. Please try again.');
@@ -499,7 +590,7 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
             <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-base sm:text-lg text-[#12001f] truncate">
               {mode === 'login' && 'Login'}
               {mode === 'signup' && 'Sign Up'}
-              {mode === 'reg_payment' && `Pay ₹${getPlatformUpiConfig().registrationFee} Registration Fee`}
+              {mode === 'reg_payment' && `Pay ₹${orderDetails?.amount ?? (pendingAccount?.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee) ?? 499} Registration Fee`}
             </h3>
             <p className="text-[11px] sm:text-xs text-[#596579] truncate">
               {mode === 'login' && 'Enter your User ID or Email and Password'}
@@ -1105,7 +1196,13 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                 disabled={loading}
                 className="w-full min-h-[46px] bg-[#311042] text-white py-3 rounded-xl font-bold hover:bg-[#9b4500] transition-colors flex items-center justify-center gap-2 shadow-xs disabled:opacity-60 cursor-pointer text-sm"
               >
-                <span>{loading ? 'Creating Account...' : 'Continue to Registration Fee'}</span>
+                <span>
+                  {loading
+                    ? 'Creating Account...'
+                    : signupRole === 'customer' && feeConfigs.customerFee <= 0
+                    ? 'Complete Registration (Free)'
+                    : `Continue to Registration Fee (₹${signupRole === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee})`}
+                </span>
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </button>
 
@@ -1129,11 +1226,33 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
               <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
                 <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
                   <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>One-Time Identity &amp; Platform Registration Fee</span>
+                  <span>
+                    {pendingAccount.role === 'companion'
+                      ? 'Companion Verification & Registration Fee'
+                      : 'Platform Registration Fee'}
+                  </span>
                 </div>
-                <p className="text-[11px] text-amber-800 mt-1">
-                  Pay <strong>₹{getPlatformUpiConfig().registrationFee}</strong> to complete your verified registration.
-                </p>
+                <div className="mt-2 text-xs text-amber-950 space-y-1 bg-white/60 p-2.5 rounded-xl border border-amber-200">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-600">Base Registration Fee:</span>
+                    <span className="font-semibold">₹{orderDetails?.baseAmount ?? (pendingAccount.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee)}</span>
+                  </div>
+                  {(orderDetails?.gstAmount ?? 0) > 0 && (
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-slate-600">Applicable GST:</span>
+                      <span className="font-semibold">₹{orderDetails?.gstAmount}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-1 border-t border-amber-200 font-bold text-xs text-[#311042]">
+                    <span>Total Amount Payable:</span>
+                    <span className="text-sm text-[#9b4500]">₹{orderDetails?.amount ?? (pendingAccount.role === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee)}</span>
+                  </div>
+                  {orderDetails?.orderId && (
+                    <div className="text-[10px] text-slate-500 font-mono pt-0.5 truncate">
+                      Order ID: {orderDetails.orderId}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Dynamic UPI QR Container */}
@@ -1141,12 +1260,12 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                 <DynamicUpiQr
                   upiId={getPlatformUpiConfig().upiId}
                   payeeName={getPlatformUpiConfig().payeeName || 'Navratri Companion'}
-                  amount={getPlatformUpiConfig().registrationFee || 499}
-                  paymentReference={pendingAccount.paymentReference || 'REG-PAY'}
-                  purposeLabel="Registration Fee"
+                  amount={orderDetails?.amount ?? (pendingAccount.role === 'companion' ? feeConfigs.companionFee : 499)}
+                  paymentReference={orderDetails?.orderId || pendingAccount.paymentReference || 'REG-PAY'}
+                  purposeLabel={`${pendingAccount.role === 'companion' ? 'Companion' : 'User'} Registration Fee`}
                 />
 
-                <div className="space-y-1 w-full max-w-xs">
+                <div className="space-y-1 w-full max-w-xs mt-2">
                   <div className="text-xs font-mono font-bold text-[#311042] bg-white px-3 py-1.5 rounded-lg border border-[#cec3ce]/30 flex items-center justify-between gap-1 overflow-hidden">
                     <span className="truncate">{getPlatformUpiConfig().upiId}</span>
                     <button
@@ -1167,6 +1286,23 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                 </div>
               </div>
 
+              {/* UTR / Transaction ID input */}
+              <div className="space-y-1.5 text-left">
+                <label className="block text-xs font-semibold text-[#12001f]">
+                  UPI Transaction ID / UTR / Reference ID
+                </label>
+                <input
+                  type="text"
+                  value={enteredTxnId}
+                  onChange={(e) => setEnteredTxnId(e.target.value)}
+                  placeholder="e.g. 428912345678 or UPI Ref"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-[#cec3ce]/60 rounded-xl text-xs font-mono text-[#12001f] focus:outline-none focus:ring-2 focus:ring-[#9b4500]"
+                />
+                <p className="text-[10px] text-[#596579]">
+                  Enter the transaction ID or 12-digit UTR from your payment receipt for instant verification.
+                </p>
+              </div>
+
               {/* Payment Confirmation Button */}
               <div className="space-y-2 pt-1">
                 <button
@@ -1176,11 +1312,11 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                   className="w-full min-h-[46px] bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 shadow-xs disabled:opacity-60 cursor-pointer text-sm"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>{loading ? 'Submitting for Verification...' : 'I Have Completed Payment'}</span>
+                  <span>{loading ? 'Verifying Payment...' : 'I Have Completed Payment'}</span>
                 </button>
 
                 <p className="text-[11px] text-center text-[#596579]">
-                  After clicking, your payment is sent to the Platform Operations Admin for confirmation.
+                  After clicking, your transaction is verified and registered on the secure platform.
                 </p>
               </div>
             </div>

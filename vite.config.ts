@@ -24,6 +24,12 @@ import bookingsHandler from './api/bookings.ts';
 import payoutsHandler from './api/payouts.ts';
 import complaintsHandler from './api/complaints.ts';
 import companionsHandler from './api/companions.ts';
+import feesConfigHandler from './api/fees/config.ts';
+import paymentsCreateOrderHandler from './api/payments/create-order.ts';
+import paymentsVerifyHandler from './api/payments/verify.ts';
+import paymentsWebhookHandler from './api/payments/webhook.ts';
+import adminTransactionsHandler from './api/admin/transactions.ts';
+import adminWaiveFeeHandler from './api/admin/waive-fee.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,6 +48,12 @@ function apiPlugin(): Plugin {
     if (url === '/api/auth/verify') return verifyHandler(req, res);
     if (url === '/api/auth/logout') return logoutHandler(req, res);
     if (url === '/api/auth/register') return registerHandler(req, res);
+    if (url === '/api/fees/config') return feesConfigHandler(req, res);
+    if (url === '/api/payments/create-order') return paymentsCreateOrderHandler(req, res);
+    if (url === '/api/payments/verify') return paymentsVerifyHandler(req, res);
+    if (url === '/api/payments/webhook') return paymentsWebhookHandler(req, res);
+    if (url === '/api/admin/transactions') return adminTransactionsHandler(req, res);
+    if (url === '/api/admin/waive-fee') return adminWaiveFeeHandler(req, res);
     if (url === '/api/payments/submit-registration') return submitPaymentHandler(req, res);
     if (url === '/api/admin/payment-approvals') return paymentApprovalsHandler(req, res);
     if (url === '/api/admin/approve-payment') return approvePaymentHandler(req, res);

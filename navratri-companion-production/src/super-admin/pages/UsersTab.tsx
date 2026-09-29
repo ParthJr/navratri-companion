@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Search,
@@ -18,11 +18,24 @@ import {
   Clock,
   Lock,
   Send,
+  UserCheck,
+  Coins,
+  Receipt,
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
 import { CustomerUser } from '../types';
+import {
+  fetchFeeConfigurations,
+  fetchPaymentTransactionsFromDb,
+  waiveUserFeeInDb,
+  PaymentTransactionRecord,
+} from '../../services/dbService';
 
-export const UsersTab: React.FC = () => {
+interface UsersTabProps {
+  onExitToCustomerApp?: () => void;
+}
+
+export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
   const {
     customers,
     updateCustomerStatus,
@@ -33,7 +46,16 @@ export const UsersTab: React.FC = () => {
     bookings,
     payments,
     complaints,
+    impersonateCustomer,
+    currentAdmin,
   } = useSuperAdmin();
+
+  const [dbTransactions, setDbTransactions] = useState<PaymentTransactionRecord[]>([]);
+  const [companionFeeAmount, setCompanionFeeAmount] = useState<number>(499);
+  const [customerFeeAmount, setCustomerFeeAmount] = useState<number>(0);
+  const [selectedTxForDetails, setSelectedTxForDetails] = useState<PaymentTransactionRecord | null>(null);
+  const [waivingUser, setWaivingUser] = useState<CustomerUser | null>(null);
+  const [waiveReason, setWaiveReason] = useState('Super Admin promotional waiver');
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'customer' | 'companion'>('all');
@@ -42,6 +64,30 @@ export const UsersTab: React.FC = () => {
   const [emailFilter, setEmailFilter] = useState<'all' | 'verified' | 'not_verified'>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerUser | null>(null);
   const [resendNotification, setResendNotification] = useState<string | null>(null);
+
+  const loadData = () => {
+    fetchFeeConfigurations().then((res) => {
+      if (res.success) {
+        setCompanionFeeAmount(res.companionRegistrationFee ?? 499);
+        setCustomerFeeAmount(res.customerRegistrationFee ?? 0);
+      }
+    });
+    fetchPaymentTransactionsFromDb().then((res) => {
+      if (res.success && Array.isArray(res.transactions)) {
+        setDbTransactions(res.transactions);
+      }
+    });
+  };
+
+  React.useEffect(() => {
+    loadData();
+  }, []);
+
+  const getUserTransaction = (userId: string) => {
+    return dbTransactions.find(
+      (tx) => tx.userId === userId || (tx as any).user_id === userId
+    );
+  };
 
   const filteredCustomers = customers.filter((c) => {
     const matchesSearch =
@@ -234,19 +280,50 @@ export const UsersTab: React.FC = () => {
 
                     {/* Payment Status */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      {cust.registrationFeePaid || cust.paymentStatus === 'Approved' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                          <CheckCircle2 className="w-3 h-3" /> Paid (₹499)
-                        </span>
-                      ) : cust.paymentStatus === 'Rejected' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/30">
-                          <XCircle className="w-3 h-3" /> Rejected
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
-                          <Clock className="w-3 h-3" /> Pending
-                        </span>
-                      )}
+                      {(() => {
+                        const userTx = getUserTransaction(cust.id);
+                        const isCompanion = cust.role === 'companion';
+                        const feeAmt = isCompanion ? companionFeeAmount : customerFeeAmount;
+
+                        if (userTx?.status === 'WAIVED') {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/30">
+                              <CheckCircle2 className="w-3 h-3" /> Waived (₹{userTx.totalAmount || feeAmt})
+                            </span>
+                          );
+                        }
+
+                        if (cust.registrationFeePaid || cust.paymentStatus === 'Approved' || userTx?.status === 'PAID') {
+                          const paidAmt = userTx?.totalAmount ?? feeAmt;
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                              <CheckCircle2 className="w-3 h-3" /> Paid (₹{paidAmt})
+                            </span>
+                          );
+                        }
+
+                        if (!isCompanion && customerFeeAmount === 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-300 bg-white/5 px-2 py-0.5 rounded-full border border-white/10">
+                              Free (₹0)
+                            </span>
+                          );
+                        }
+
+                        if (cust.paymentStatus === 'Rejected' || userTx?.status === 'FAILED') {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/30">
+                              <XCircle className="w-3 h-3" /> Rejected
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                            <Clock className="w-3 h-3" /> Pending (₹{feeAmt})
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     <td className="py-3.5 px-4 whitespace-nowrap text-slate-300">
@@ -277,6 +354,71 @@ export const UsersTab: React.FC = () => {
 
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Payment Details Button */}
+                        <button
+                          onClick={() => {
+                            const userTx = getUserTransaction(cust.id);
+                            if (userTx) {
+                              setSelectedTxForDetails(userTx);
+                            } else {
+                              const isComp = cust.role === 'companion';
+                              setSelectedTxForDetails({
+                                id: `tx_${cust.id}`,
+                                userId: cust.id,
+                                userName: cust.name,
+                                userPhone: cust.phone,
+                                userEmail: cust.email,
+                                userRole: isComp ? 'COMPANION' : 'CUSTOMER',
+                                feeCode: isComp ? 'COMPANION_REGISTRATION' : 'CUSTOMER_REGISTRATION',
+                                feeName: isComp ? 'Companion Registration Fee' : 'Customer Registration Fee',
+                                baseAmount: isComp ? companionFeeAmount : customerFeeAmount,
+                                gstAmount: 0,
+                                totalAmount: isComp ? companionFeeAmount : customerFeeAmount,
+                                currency: 'INR',
+                                status: cust.registrationFeePaid ? 'PAID' : 'PENDING',
+                                gateway: 'DIRECT_UPI',
+                                orderId: `ord_${cust.id}`,
+                                paymentId: `pay_${cust.id}`,
+                                transactionId: (cust as any).paymentReference || `TXN_${cust.id}`,
+                                paymentMethod: 'UPI',
+                                createdAt: cust.registrationDate,
+                                updatedAt: cust.registrationDate,
+                              });
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400"
+                          title="Payment Details"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Companion Fee Waiver */}
+                        {cust.role === 'companion' && !cust.registrationFeePaid && cust.paymentStatus !== 'Approved' && (
+                          <button
+                            onClick={() => {
+                              setWaivingUser(cust);
+                              setWaiveReason('Super Admin promotional waiver');
+                            }}
+                            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400"
+                            title="Waive Registration Fee"
+                          >
+                            <Coins className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            impersonateCustomer(cust);
+                            if (onExitToCustomerApp) {
+                              onExitToCustomerApp();
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400"
+                          title={`Login as Customer (View Marketplace as ${cust.name})`}
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                        </button>
+
                         <button
                           onClick={() => setSelectedCustomer(cust)}
                           className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white"
@@ -359,24 +501,94 @@ export const UsersTab: React.FC = () => {
                   <span className="text-[10px] uppercase font-bold text-emerald-400">Verification &amp; Security</span>
                   
                   {/* Registration Fee Payment Status */}
-                  <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 text-xs">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-purple-400" />
-                      <span>Registration Fee Payment:</span>
+                  <div className="p-3 rounded-xl bg-white/5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-purple-400" />
+                        <span className="font-semibold text-white">Registration Fee ({selectedCustomer.role === 'companion' ? 'Companion' : 'Customer'}):</span>
+                      </div>
+                      {(() => {
+                        const userTx = getUserTransaction(selectedCustomer.id);
+                        const isComp = selectedCustomer.role === 'companion';
+                        const feeAmt = isComp ? companionFeeAmount : customerFeeAmount;
+                        if (userTx?.status === 'WAIVED') {
+                          return (
+                            <span className="text-blue-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Waived by Admin
+                            </span>
+                          );
+                        }
+                        if (selectedCustomer.registrationFeePaid || selectedCustomer.paymentStatus === 'Approved' || userTx?.status === 'PAID') {
+                          return (
+                            <span className="text-emerald-400 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Paid (₹{userTx?.totalAmount || feeAmt})
+                            </span>
+                          );
+                        }
+                        if (!isComp && customerFeeAmount === 0) {
+                          return (
+                            <span className="text-slate-300 font-bold">Free (₹0)</span>
+                          );
+                        }
+                        return (
+                          <span className="text-amber-400 font-bold flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" /> Pending (₹{feeAmt})
+                          </span>
+                        );
+                      })()}
                     </div>
-                    {selectedCustomer.registrationFeePaid || selectedCustomer.paymentStatus === 'Approved' ? (
-                      <span className="text-emerald-400 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Approved &amp; Paid
-                      </span>
-                    ) : selectedCustomer.paymentStatus === 'Rejected' ? (
-                      <span className="text-rose-400 font-bold flex items-center gap-1">
-                        <XCircle className="w-3.5 h-3.5" /> Rejected
-                      </span>
-                    ) : (
-                      <span className="text-amber-400 font-bold flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" /> Pending Verification
-                      </span>
-                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const userTx = getUserTransaction(selectedCustomer.id);
+                          if (userTx) {
+                            setSelectedTxForDetails(userTx);
+                          } else {
+                            const isComp = selectedCustomer.role === 'companion';
+                            setSelectedTxForDetails({
+                              id: `tx_${selectedCustomer.id}`,
+                              userId: selectedCustomer.id,
+                              userName: selectedCustomer.name,
+                              userPhone: selectedCustomer.phone,
+                              userEmail: selectedCustomer.email,
+                              userRole: isComp ? 'COMPANION' : 'CUSTOMER',
+                              feeCode: isComp ? 'COMPANION_REGISTRATION' : 'CUSTOMER_REGISTRATION',
+                              feeName: isComp ? 'Companion Registration Fee' : 'Customer Registration Fee',
+                              baseAmount: isComp ? companionFeeAmount : customerFeeAmount,
+                              gstAmount: 0,
+                              totalAmount: isComp ? companionFeeAmount : customerFeeAmount,
+                              currency: 'INR',
+                              status: selectedCustomer.registrationFeePaid ? 'PAID' : 'PENDING',
+                              gateway: 'DIRECT_UPI',
+                              orderId: `ord_${selectedCustomer.id}`,
+                              paymentId: `pay_${selectedCustomer.id}`,
+                              transactionId: (selectedCustomer as any).paymentReference || `TXN_${selectedCustomer.id}`,
+                              paymentMethod: 'UPI',
+                              createdAt: selectedCustomer.registrationDate,
+                              updatedAt: selectedCustomer.registrationDate,
+                            });
+                          }
+                        }}
+                        className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <CreditCard className="w-3 h-3" /> View Payment Details
+                      </button>
+
+                      {selectedCustomer.role === 'companion' && !selectedCustomer.registrationFeePaid && selectedCustomer.paymentStatus !== 'Approved' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWaivingUser(selectedCustomer);
+                            setWaiveReason('Super Admin promotional waiver');
+                          }}
+                          className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-[11px] font-semibold border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Coins className="w-3 h-3" /> Waive Fee
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Payment Approve / Reject actions */}
@@ -526,12 +738,26 @@ export const UsersTab: React.FC = () => {
                 )}
               </div>
 
-              {/* Status Change Controls */}
-              <div className="flex items-center justify-between pt-4 border-t border-white/10">
+              {/* Status Change Controls & Impersonation */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-4 border-t border-white/10">
                 <div className="text-xs text-slate-400">
                   Current Status: <span className="font-bold text-white capitalize">{selectedCustomer.status}</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      impersonateCustomer(selectedCustomer);
+                      if (onExitToCustomerApp) {
+                        onExitToCustomerApp();
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-purple-900/40"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>View as Customer</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       updateCustomerStatus(selectedCustomer.id, 'active');
@@ -560,7 +786,7 @@ export const UsersTab: React.FC = () => {
                     Suspend
                   </button>
 
-                  <button
+                    <button
                     onClick={() => {
                       updateCustomerStatus(selectedCustomer.id, 'blocked');
                       setSelectedCustomer({ ...selectedCustomer, status: 'blocked' });
@@ -577,6 +803,176 @@ export const UsersTab: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* PAYMENT DETAILS POPUP MODAL */}
+      {selectedTxForDetails && (
+        <div className="fixed inset-0 z-50 bg-[#12001f]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div
+            className="bg-[#1a0c2e] border border-white/20 w-full max-w-lg rounded-3xl shadow-2xl p-6 text-white space-y-5 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-[#fd8a42]" />
+                <h3 className="font-bold text-base text-white">Payment Transaction Details</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTxForDetails(null)}
+                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Transaction ID</span>
+                  <span className="font-mono font-bold text-[#fd8a42]">{selectedTxForDetails.transactionId || selectedTxForDetails.id}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Gateway Order ID</span>
+                  <span className="font-mono text-slate-300">{selectedTxForDetails.orderId || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Gateway Payment ID</span>
+                  <span className="font-mono text-slate-300">{selectedTxForDetails.paymentId || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Payment Gateway</span>
+                  <span className="font-bold text-white">{selectedTxForDetails.gateway || 'RAZORPAY'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">User / Customer</span>
+                  <span className="font-semibold text-white">{selectedTxForDetails.userName}</span>
+                  <span className="text-[10px] text-slate-400 block">@{selectedTxForDetails.userId}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">User Role</span>
+                  <span className="font-bold text-purple-300">{selectedTxForDetails.userRole}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Fee Type</span>
+                  <span className="font-semibold text-white">{selectedTxForDetails.feeName}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">Status</span>
+                  <span className="font-bold text-emerald-400 uppercase">{selectedTxForDetails.status}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Base Amount:</span>
+                  <span className="font-semibold text-white">₹{selectedTxForDetails.baseAmount}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">GST Amount:</span>
+                  <span className="font-semibold text-white">₹{selectedTxForDetails.gstAmount}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-white/10 font-bold text-sm text-[#fd8a42]">
+                  <span>Total Amount Paid:</span>
+                  <span>₹{selectedTxForDetails.totalAmount} {selectedTxForDetails.currency || 'INR'}</span>
+                </div>
+              </div>
+
+              {selectedTxForDetails.waivedBy && (
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-1">
+                  <div className="text-[10px] font-bold text-blue-300 uppercase">Fee Waived by Admin</div>
+                  <div className="text-[11px] text-blue-200">
+                    Admin: <strong>{selectedTxForDetails.waivedBy}</strong> | Reason: {selectedTxForDetails.waiveReason}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedTxForDetails(null)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WAIVE COMPANION FEE MODAL */}
+      {waivingUser && (
+        <div className="fixed inset-0 z-50 bg-[#12001f]/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const adminId = currentAdmin?.id || currentAdmin?.username || 'superadmin';
+              const res = await waiveUserFeeInDb(waivingUser.id, 'COMPANION_REGISTRATION', waiveReason, adminId);
+              if (res.success) {
+                setResendNotification(`Registration fee WAIVED for ${waivingUser.name}.`);
+                setTimeout(() => setResendNotification(null), 3500);
+                setWaivingUser(null);
+                loadData();
+              } else {
+                alert(res.errorMessage || 'Failed to waive fee.');
+              }
+            }}
+            className="bg-[#1a0c2e] border border-amber-500/30 w-full max-w-md rounded-3xl shadow-2xl p-6 text-white space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Coins className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-base text-white">Waive Companion Registration Fee</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWaivingUser(null)}
+                className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Override and mark registration fee as WAIVED for companion <strong>{waivingUser.name}</strong> (@{waivingUser.id}).
+            </p>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">
+                Reason for Waiver (Required for Audit Compliance)
+              </label>
+              <textarea
+                required
+                rows={3}
+                value={waiveReason}
+                onChange={(e) => setWaiveReason(e.target.value)}
+                placeholder="e.g. Promotional launch waiver or manual verification"
+                className="w-full bg-[#201033] border border-white/15 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setWaivingUser(null)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs shadow-lg cursor-pointer"
+              >
+                Confirm &amp; Waive Fee
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

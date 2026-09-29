@@ -665,3 +665,263 @@ export async function checkDatabaseHealth(): Promise<{ ok: boolean; database: st
   } catch (e) {}
   return { ok: false, database: 'disconnected' };
 }
+
+export interface FeeConfiguration {
+  id: string;
+  feeCode: string;
+  feeName: string;
+  applicableRole: 'COMPANION' | 'CUSTOMER';
+  amount: number;
+  currency: string;
+  gstEnabled: boolean;
+  gstPercentage: number;
+  status: 'ACTIVE' | 'INACTIVE';
+  effectiveFrom: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentTransactionRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  userPhone?: string;
+  userRole: 'COMPANION' | 'CUSTOMER';
+  feeConfigurationId?: string;
+  feeCode: string;
+  feeName: string;
+  baseAmount: number;
+  gstAmount: number;
+  totalAmount: number;
+  currency: string;
+  status: 'INITIATED' | 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'WAIVED';
+  gateway: string;
+  orderId: string;
+  paymentId: string;
+  transactionId: string;
+  gatewayReferenceId?: string;
+  paymentMethod: string;
+  paidAt?: string | null;
+  waivedBy?: string | null;
+  waiveReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  notes?: string | null;
+}
+
+/**
+ * Fetch active fee configurations
+ */
+export async function fetchFeeConfigurations(): Promise<{
+  success: boolean;
+  fees: FeeConfiguration[];
+  companionRegistrationFee: number;
+  customerRegistrationFee: number;
+  customerPlatformFee: number;
+  companionPlatformFee: number;
+  errorMessage?: string;
+}> {
+  try {
+    const res = await fetch('/api/fees/config');
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        fees: data.fees || [],
+        companionRegistrationFee: data.companionRegistrationFee ?? 499,
+        customerRegistrationFee: data.customerRegistrationFee ?? 0,
+        customerPlatformFee: data.customerPlatformFee ?? 50,
+        companionPlatformFee: data.companionPlatformFee ?? 0,
+      };
+    }
+    return {
+      success: false,
+      fees: [],
+      companionRegistrationFee: 499,
+      customerRegistrationFee: 0,
+      customerPlatformFee: 50,
+      companionPlatformFee: 0,
+      errorMessage: data.errorMessage || 'Failed to fetch fee configuration',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      fees: [],
+      companionRegistrationFee: 499,
+      customerRegistrationFee: 0,
+      customerPlatformFee: 50,
+      companionPlatformFee: 0,
+      errorMessage: err.message || 'Network error fetching fees',
+    };
+  }
+}
+
+/**
+ * Update a fee configuration (Super Admin)
+ */
+export async function updateFeeConfigurationInDb(
+  feeCode: string,
+  updates: Partial<FeeConfiguration>,
+  adminId: string = 'superadmin'
+): Promise<{ success: boolean; fee?: FeeConfiguration; errorMessage?: string }> {
+  try {
+    const res = await fetch('/api/fees/config', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ feeCode, adminId, ...updates }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true, fee: data.fee };
+    }
+    return { success: false, errorMessage: data.errorMessage || 'Failed to update fee configuration' };
+  } catch (err: any) {
+    return { success: false, errorMessage: err.message || 'Network error updating fee configuration' };
+  }
+}
+
+/**
+ * Create a backend payment order
+ */
+export async function createPaymentOrderInDb(
+  userId: string,
+  feeCode: string = 'COMPANION_REGISTRATION',
+  gateway: string = 'RAZORPAY'
+): Promise<{
+  success: boolean;
+  orderId?: string;
+  amount?: number;
+  baseAmount?: number;
+  gstAmount?: number;
+  currency?: string;
+  keyId?: string;
+  transaction?: PaymentTransactionRecord;
+  errorMessage?: string;
+}> {
+  try {
+    const res = await fetch('/api/payments/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, feeCode, gateway }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        orderId: data.orderId,
+        amount: data.amount,
+        baseAmount: data.baseAmount,
+        gstAmount: data.gstAmount,
+        currency: data.currency,
+        keyId: data.keyId,
+        transaction: data.transaction,
+      };
+    }
+    return { success: false, errorMessage: data.errorMessage || 'Failed to create payment order' };
+  } catch (err: any) {
+    return { success: false, errorMessage: err.message || 'Network error creating payment order' };
+  }
+}
+
+/**
+ * Verify a payment transaction on backend
+ */
+export async function verifyPaymentInDb(payload: {
+  orderId: string;
+  transactionId?: string;
+  paymentId?: string;
+  signature?: string;
+  paymentMethod?: string;
+  userId?: string;
+}): Promise<{
+  success: boolean;
+  verified?: boolean;
+  transaction?: PaymentTransactionRecord;
+  user?: DbUser;
+  errorMessage?: string;
+}> {
+  try {
+    const res = await fetch('/api/payments/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        verified: data.verified,
+        transaction: data.transaction,
+        user: data.user,
+      };
+    }
+    return { success: false, errorMessage: data.errorMessage || 'Payment verification failed' };
+  } catch (err: any) {
+    return { success: false, errorMessage: err.message || 'Network error verifying payment' };
+  }
+}
+
+/**
+ * Fetch all payment transactions for Super Admin
+ */
+export async function fetchPaymentTransactionsFromDb(): Promise<{
+  success: boolean;
+  transactions: PaymentTransactionRecord[];
+  total: number;
+  errorMessage?: string;
+}> {
+  try {
+    const res = await fetch('/api/admin/transactions', {
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        transactions: data.transactions || [],
+        total: data.total ?? (data.transactions || []).length,
+      };
+    }
+    return { success: false, transactions: [], total: 0, errorMessage: data.errorMessage || 'Failed to fetch transactions' };
+  } catch (err: any) {
+    return { success: false, transactions: [], total: 0, errorMessage: err.message || 'Network error fetching transactions' };
+  }
+}
+
+/**
+ * Waive registration fee for a user (Super Admin)
+ */
+export async function waiveUserFeeInDb(
+  userId: string,
+  feeCode: string = 'COMPANION_REGISTRATION',
+  reason: string,
+  adminId: string = 'superadmin'
+): Promise<{
+  success: boolean;
+  message?: string;
+  transaction?: PaymentTransactionRecord;
+  user?: DbUser;
+  errorMessage?: string;
+}> {
+  try {
+    const res = await fetch('/api/admin/waive-fee', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ userId, feeCode, reason, adminId }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return {
+        success: true,
+        message: data.message,
+        transaction: data.transaction,
+        user: data.user,
+      };
+    }
+    return { success: false, errorMessage: data.errorMessage || 'Failed to waive user fee' };
+  } catch (err: any) {
+    return { success: false, errorMessage: err.message || 'Network error waiving fee' };
+  }
+}
+

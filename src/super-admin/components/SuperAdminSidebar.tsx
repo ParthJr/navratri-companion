@@ -139,7 +139,7 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
         { id: 'platform-fees', label: 'Platform Fees', icon: Percent },
         { id: 'pricing-packages', label: 'Pricing', icon: Package },
         { id: 'commissions', label: 'Commissions', icon: TrendingUp },
-        { id: 'registration-fee', label: 'Registration Fee', icon: Coins },
+        { id: 'registration-fee', label: 'Fee Structure Configuration', icon: Coins },
         { id: 'coupons', label: 'Coupons', icon: Ticket },
       ],
     },
