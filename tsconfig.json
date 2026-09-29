@@ -26,7 +26,8 @@
   "include": [
     "src",
     "api",
-    "vite.config.ts"
+    "vite.config.ts",
+    "server.ts"
   ],
   "exclude": [
     "node_modules",
