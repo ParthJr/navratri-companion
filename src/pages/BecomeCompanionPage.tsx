@@ -3,6 +3,8 @@ import { CheckCircle, ShieldCheck, Sparkles, ArrowRight, AlertCircle } from 'luc
 import { useSuperAdmin } from '../super-admin/context/SuperAdminContext';
 import { PhotoUpload } from '../components/PhotoUpload';
 import { submitApplicationToDb } from '../services/dbService';
+import { generateWhatsAppUrl, trackWhatsAppClick } from '../utils/whatsapp';
+import { WhatsAppIcon } from '../components/FloatingWhatsAppButton';
 
 interface BecomeCompanionPageProps {
   onApplicationSubmitted: () => void;
@@ -193,6 +195,31 @@ export const BecomeCompanionPage: React.FC<BecomeCompanionPageProps> = ({
                 <span className={step >= 1 ? 'text-[#9b4500]' : 'text-[#596579]'}>1. Basic Details &amp; Photo</span>
                 <span className={step >= 2 ? 'text-[#9b4500]' : 'text-[#596579]'}>2. Garba Skills &amp; Rate</span>
                 <span className={step >= 3 ? 'text-[#9b4500]' : 'text-[#596579]'}>3. ID &amp; Selfie Verification</span>
+              </div>
+
+              {/* WhatsApp Support Assistance */}
+              <div className="flex items-center justify-between p-3.5 bg-emerald-50 border border-emerald-200/80 rounded-2xl text-xs">
+                <div>
+                  <span className="font-semibold text-emerald-950 block">Need help with registration?</span>
+                  <span className="text-[11px] text-emerald-700">Chat directly with the support team on WhatsApp</span>
+                </div>
+                <a
+                  href={generateWhatsAppUrl({ context: 'become_companion' })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() =>
+                    trackWhatsAppClick({
+                      page: 'become_companion_page',
+                      context: 'become_companion',
+                      role: 'companion',
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer"
+                  aria-label="Chat on WhatsApp for Companion Registration"
+                >
+                  <WhatsAppIcon className="w-4 h-4 fill-current" />
+                  <span>Chat on WhatsApp</span>
+                </a>
               </div>
 
               {error && (

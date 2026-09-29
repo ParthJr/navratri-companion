@@ -334,6 +334,10 @@ export interface SystemSettingsConfig {
   platformUpiId: string; // e.g. "987654321012@upi" or 12-char UPI ID
   platformUpiQrUrl: string; // URL / Base64 of Admin's official UPI QR code
   platformPayeeName: string;
+
+  // WhatsApp Support Configuration
+  whatsappNumber?: string; // international format digits only, e.g. "919876543210"
+  whatsappDefaultMessage?: string; // e.g. "Hello Navratri Companion team, I need help with the platform."
 }
 
 export interface CustomerUser {

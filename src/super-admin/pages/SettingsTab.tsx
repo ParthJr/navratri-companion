@@ -16,8 +16,11 @@ import {
   Check,
   Upload,
   Image as ImageIcon,
+  MessageCircle,
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
+import { validateWhatsAppNumber } from '../../utils/whatsapp';
+import { WhatsAppIcon } from '../../components/FloatingWhatsAppButton';
 
 export const SettingsTab: React.FC = () => {
   const { systemSettings, updateSystemSettings, bookings, companions, payouts, customers } = useSuperAdmin();
@@ -36,6 +39,12 @@ export const SettingsTab: React.FC = () => {
   const [platformUpiQrUrl, setPlatformUpiQrUrl] = useState(
     systemSettings.platformUpiQrUrl ||
       'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi%3A%2F%2Fpay%3Fpa%3D987654321012%40upi%26pn%3DNavratri%2520Companion%2520Platform%26cu%3DINR'
+  );
+
+  // Platform WhatsApp Support Configuration
+  const [whatsappNumber, setWhatsappNumber] = useState(systemSettings.whatsappNumber || '919876543210');
+  const [whatsappDefaultMessage, setWhatsappDefaultMessage] = useState(
+    systemSettings.whatsappDefaultMessage || 'Hello Navratri Companion team, I need help with the platform.'
   );
 
   const [copiedPreview, setCopiedPreview] = useState(false);
@@ -72,6 +81,13 @@ export const SettingsTab: React.FC = () => {
       setValidationError('UPI ID identifier prefix must be exactly 12 characters/numbers (e.g. 987654321012).');
       return;
     }
+
+    const waValidation = validateWhatsAppNumber(whatsappNumber);
+    if (!waValidation.isValid) {
+      setValidationError(waValidation.errorMessage || 'Invalid WhatsApp number.');
+      return;
+    }
+
     setValidationError(null);
 
     updateSystemSettings({
@@ -85,6 +101,8 @@ export const SettingsTab: React.FC = () => {
       platformUpiId,
       platformPayeeName,
       platformUpiQrUrl,
+      whatsappNumber: waValidation.cleanNumber,
+      whatsappDefaultMessage: whatsappDefaultMessage.trim(),
     });
 
     setSavedBanner(true);
@@ -376,16 +394,99 @@ export const SettingsTab: React.FC = () => {
               {maintenanceMode ? 'Active (Restricted)' : 'Normal Operations'}
             </button>
           </div>
+        </div>
 
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-[#fd8a42] to-[#c9184a] text-white text-xs font-bold shadow-lg hover:opacity-95 flex items-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              <span>Save System &amp; UPI Configuration</span>
-            </button>
+        {/* SECTION 3: CONTACT & SUPPORT (WHATSAPP CONFIGURATION) */}
+        <div className="p-6 rounded-2xl bg-[#160b24] border border-white/10 space-y-6">
+          <div className="flex items-start justify-between border-b border-white/10 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <WhatsAppIcon className="w-5 h-5 text-emerald-400" />
+                <h2 className="text-base font-bold text-white">Contact &amp; Support (WhatsApp Configuration)</h2>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Configure the central WhatsApp contact number and default greeting message for customer-facing support buttons.
+              </p>
+            </div>
+            <span className="text-[10px] uppercase font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full">
+              Live Chat Support
+            </span>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  WhatsApp Support Number (International Format)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={whatsappNumber}
+                  onChange={(e) => {
+                    setWhatsappNumber(e.target.value);
+                    setValidationError(null);
+                  }}
+                  placeholder="e.g. 919876543210 or +91 98765 43210"
+                  className="w-full bg-[#201033] border border-white/15 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-emerald-400"
+                />
+                <span className="text-[11px] text-slate-400 block mt-1">
+                  Stored as digits only without spaces or symbols (e.g. <code>919876543210</code>). Indian 10-digit numbers automatically formatted with 91 prefix.
+                </span>
+              </div>
+
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">
+                  Default WhatsApp Message
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={whatsappDefaultMessage}
+                  onChange={(e) => setWhatsappDefaultMessage(e.target.value)}
+                  placeholder="Hello Navratri Companion team, I need help with the platform."
+                  className="w-full bg-[#201033] border border-white/15 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-emerald-400"
+                />
+                <span className="text-[11px] text-slate-400 block mt-1">
+                  This default message pre-populates in user's WhatsApp when clicking support across the site.
+                </span>
+              </div>
+            </div>
+
+            {/* Live WhatsApp Link Preview */}
+            <div className="p-4 rounded-2xl bg-[#201033] border border-white/10 space-y-3">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                Generated WhatsApp URL Preview
+              </span>
+              <div className="p-3 bg-[#160b24] rounded-xl border border-white/10 font-mono text-xs text-emerald-400 break-all select-all">
+                https://wa.me/{whatsappNumber.replace(/\D/g, '') || '919876543210'}?text={encodeURIComponent(whatsappDefaultMessage.trim())}
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] text-slate-400">
+                  Target: {whatsappNumber.replace(/\D/g, '') || '919876543210'}
+                </span>
+                <a
+                  href={`https://wa.me/${whatsappNumber.replace(/\D/g, '') || '919876543210'}?text=${encodeURIComponent(whatsappDefaultMessage.trim())}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                  <span>Test Link</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button
+            type="submit"
+            className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-[#fd8a42] to-[#c9184a] text-white text-xs font-bold shadow-lg hover:opacity-95 flex items-center gap-2 cursor-pointer"
+          >
+            <Save className="w-4 h-4" />
+            <span>Save Settings &amp; WhatsApp Configuration</span>
+          </button>
         </div>
       </form>
 

@@ -14,6 +14,7 @@ import { LoginSignupModal } from './components/LoginSignupModal';
 import { SignUpRequiredModal } from './components/SignUpRequiredModal';
 import { CreateProfileModal } from './components/CreateProfileModal';
 import { ReportProblemModal } from './components/ReportProblemModal';
+import { FloatingWhatsAppButton } from './components/FloatingWhatsAppButton';
 import { useSuperAdmin } from './super-admin/context/SuperAdminContext';
 import { SuperAdminApp } from './super-admin/SuperAdminApp';
 import {
@@ -818,6 +819,9 @@ export default function App() {
               onSaveProfile={handleSaveProfile}
             />
           )}
+
+          {/* Customer-Facing Floating WhatsApp Contact Button */}
+          <FloatingWhatsAppButton currentView={currentView} />
         </div>
       )}
     </>

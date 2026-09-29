@@ -151,4 +151,8 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettingsConfig = {
   platformUpiId: '987654321012@upi', // Exactly 12-char identifier prefix: 987654321012
   platformUpiQrUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi%3A%2F%2Fpay%3Fpa%3D987654321012%40upi%26pn%3DNavratri%2520Companion%2520Platform%26cu%3DINR',
   platformPayeeName: 'Navratri Companion Platform Owner',
+
+  // Official Platform WhatsApp Support
+  whatsappNumber: '919876543210',
+  whatsappDefaultMessage: 'Hello Navratri Companion team, I need help with the platform.',
 };

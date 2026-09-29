@@ -1,5 +1,7 @@
 import React from 'react';
-import { PhoneCall, MapPin, Shield, HelpCircle, FileText, AlertCircle, Users, Navigation, CheckCircle2 } from 'lucide-react';
+import { PhoneCall, MapPin, Shield, HelpCircle, FileText, AlertCircle, Users, Navigation, CheckCircle2, MessageCircle } from 'lucide-react';
+import { generateWhatsAppUrl, trackWhatsAppClick } from '../utils/whatsapp';
+import { WhatsAppIcon } from '../components/FloatingWhatsAppButton';
 
 export const HelpPage: React.FC = () => {
   return (
@@ -31,6 +33,22 @@ export const HelpPage: React.FC = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <a
+              href={generateWhatsAppUrl({ context: 'help' })}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() =>
+                trackWhatsAppClick({
+                  page: 'help_page',
+                  context: 'help',
+                })
+              }
+              className="bg-[#25D366] hover:bg-[#20bd5a] text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
+              aria-label="WhatsApp Support"
+            >
+              <WhatsAppIcon className="w-4 h-4 fill-current" />
+              <span>WhatsApp Support</span>
+            </a>
+            <a
               href="tel:+917926850000"
               className="bg-[#311042] text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-[#9b4500] transition-colors flex items-center gap-2"
             >
@@ -43,6 +61,47 @@ export const HelpPage: React.FC = () => {
             >
               <AlertCircle className="w-4 h-4" />
               <span>Emergency 112</span>
+            </a>
+          </div>
+        </div>
+
+        {/* Need Assistance Quick Card */}
+        <div className="bg-emerald-50 border border-emerald-200/80 p-5 sm:p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-[#25D366]/15 flex items-center justify-center shrink-0">
+              <WhatsAppIcon className="w-6 h-6 text-[#25D366]" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm sm:text-base text-emerald-950">
+                Need Assistance? Chat with Us
+              </h4>
+              <p className="text-xs text-emerald-800">
+                Have questions about passes, companions, or safety protocols? Our support team responds quickly on WhatsApp.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto">
+            <a
+              href={generateWhatsAppUrl({ context: 'help' })}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() =>
+                trackWhatsAppClick({
+                  page: 'help_page_banner',
+                  context: 'help',
+                })
+              }
+              className="flex-1 sm:flex-none justify-center px-4 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <WhatsAppIcon className="w-4 h-4 fill-current" />
+              <span>WhatsApp Support</span>
+            </a>
+            <a
+              href="tel:+917926850000"
+              className="flex-1 sm:flex-none justify-center px-4 py-2.5 bg-white border border-emerald-300 text-emerald-900 hover:bg-emerald-100 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>Contact Support</span>
             </a>
           </div>
         </div>

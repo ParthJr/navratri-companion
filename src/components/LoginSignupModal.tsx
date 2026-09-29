@@ -26,6 +26,8 @@ import {
   FeeConfiguration,
 } from '../services/dbService';
 import { PhotoUpload } from './PhotoUpload';
+import { generateWhatsAppUrl, trackWhatsAppClick } from '../utils/whatsapp';
+import { WhatsAppIcon } from './FloatingWhatsAppButton';
 
 // Helper to calculate age from Date of Birth
 const calculateAge = (dobString: string): number | null => {
@@ -1379,6 +1381,33 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                 </label>
               </div>
 
+              {/* WhatsApp Registration Support Option for Companions */}
+              {signupRole === 'companion' && (
+                <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs">
+                  <div>
+                    <span className="font-semibold text-emerald-950 block">Need help with registration?</span>
+                    <span className="text-[10px] text-emerald-700">Chat directly with the support team</span>
+                  </div>
+                  <a
+                    href={generateWhatsAppUrl({ context: 'companion_registration' })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      trackWhatsAppClick({
+                        page: 'signup_modal',
+                        context: 'companion_registration',
+                        role: 'companion',
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer"
+                    aria-label="Chat on WhatsApp for Companion Registration"
+                  >
+                    <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                    <span>Chat on WhatsApp</span>
+                  </a>
+                </div>
+              )}
+
               {/* Submit Registration -> Proceeds to Payment */}
               <button
                 type="submit"
@@ -1451,6 +1480,34 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                   paymentReference={orderDetails?.orderId || pendingAccount.paymentReference || 'REG-PAY'}
                   purposeLabel={`${pendingAccount.role === 'companion' ? 'Companion' : 'User'} Registration Fee`}
                 />
+              </div>
+
+              {/* Need help with payment? WhatsApp Support */}
+              <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs">
+                <div>
+                  <span className="font-semibold text-emerald-950 block">Need help with payment?</span>
+                  <span className="text-[10px] text-emerald-700">Official Navratri WhatsApp desk</span>
+                </div>
+                <a
+                  href={generateWhatsAppUrl({
+                    context: 'payment_companion_499',
+                    paymentRef: orderDetails?.orderId || pendingAccount.paymentReference,
+                  })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() =>
+                    trackWhatsAppClick({
+                      page: 'reg_payment_modal',
+                      context: 'payment_companion_499',
+                      role: pendingAccount.role,
+                    })
+                  }
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer"
+                  aria-label="WhatsApp Support for Payment"
+                >
+                  <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                  <span>WhatsApp Support</span>
+                </a>
               </div>
 
               {/* 🔐 TRANSACTION ID / UTR FIELD directly above "I Have Completed Payment" */}
