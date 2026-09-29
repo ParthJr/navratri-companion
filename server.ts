@@ -2,6 +2,8 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// Build revision: 2026-09-29-supa-srk
+
 // Import all API route handlers
 import healthHandler from './api/health.ts';
 import uploadHandler from './api/upload.ts';
