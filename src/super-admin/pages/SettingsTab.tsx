@@ -19,7 +19,12 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
-import { validateWhatsAppNumber } from '../../utils/whatsapp';
+import {
+  validateWhatsAppNumber,
+  WHATSAPP_NUMBER,
+  WHATSAPP_DEFAULT_MESSAGE,
+  isDemoWhatsAppNumber,
+} from '../../utils/whatsapp';
 import { WhatsAppIcon } from '../../components/FloatingWhatsAppButton';
 
 export const SettingsTab: React.FC = () => {
@@ -42,9 +47,13 @@ export const SettingsTab: React.FC = () => {
   );
 
   // Platform WhatsApp Support Configuration
-  const [whatsappNumber, setWhatsappNumber] = useState(systemSettings.whatsappNumber || '919876543210');
+  const [whatsappNumber, setWhatsappNumber] = useState(
+    systemSettings.whatsappNumber && !isDemoWhatsAppNumber(systemSettings.whatsappNumber)
+      ? systemSettings.whatsappNumber
+      : '918200564182'
+  );
   const [whatsappDefaultMessage, setWhatsappDefaultMessage] = useState(
-    systemSettings.whatsappDefaultMessage || 'Hello Navratri Companion team, I need help with the platform.'
+    systemSettings.whatsappDefaultMessage || WHATSAPP_DEFAULT_MESSAGE
   );
 
   const [copiedPreview, setCopiedPreview] = useState(false);
@@ -427,11 +436,11 @@ export const SettingsTab: React.FC = () => {
                     setWhatsappNumber(e.target.value);
                     setValidationError(null);
                   }}
-                  placeholder="e.g. 919876543210 or +91 98765 43210"
+                  placeholder="e.g. +91 820 056 4182 or 918200564182"
                   className="w-full bg-[#201033] border border-white/15 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-emerald-400"
                 />
                 <span className="text-[11px] text-slate-400 block mt-1">
-                  Stored as digits only without spaces or symbols (e.g. <code>919876543210</code>). Indian 10-digit numbers automatically formatted with 91 prefix.
+                  Stored as digits only without spaces or symbols (e.g. <code>918200564182</code>). Indian 10-digit numbers automatically formatted with 91 prefix.
                 </span>
               </div>
 
@@ -459,14 +468,14 @@ export const SettingsTab: React.FC = () => {
                 Generated WhatsApp URL Preview
               </span>
               <div className="p-3 bg-[#160b24] rounded-xl border border-white/10 font-mono text-xs text-emerald-400 break-all select-all">
-                https://wa.me/{whatsappNumber.replace(/\D/g, '') || '919876543210'}?text={encodeURIComponent(whatsappDefaultMessage.trim())}
+                https://wa.me/{whatsappNumber.replace(/\D/g, '') || '918200564182'}?text={encodeURIComponent(whatsappDefaultMessage.trim())}
               </div>
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] text-slate-400">
-                  Target: {whatsappNumber.replace(/\D/g, '') || '919876543210'}
+                  Target: {whatsappNumber.replace(/\D/g, '') || '918200564182'}
                 </span>
                 <a
-                  href={`https://wa.me/${whatsappNumber.replace(/\D/g, '') || '919876543210'}?text=${encodeURIComponent(whatsappDefaultMessage.trim())}`}
+                  href={`https://wa.me/${whatsappNumber.replace(/\D/g, '') || '918200564182'}?text=${encodeURIComponent(whatsappDefaultMessage.trim())}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"

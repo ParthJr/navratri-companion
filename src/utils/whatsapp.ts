@@ -11,6 +11,41 @@
  * - No sensitive payment credentials (passwords, OTPs, PINs, card numbers) ever included.
  */
 
+/**
+ * =====================================================================
+ * CENTRAL WHATSAPP BUSINESS CONFIGURATION
+ * =====================================================================
+ * Single source of truth for the platform WhatsApp Business contact number.
+ * Can be configured directly here or overridden via VITE_WHATSAPP_NUMBER.
+ * 
+ * Supports formats:
+ * - "+91 820 056 4182"
+ * - "918200564182"
+ * - "8200564182"
+ */
+export const WHATSAPP_NUMBER = '+91 820 056 4182';
+export const WHATSAPP_DEFAULT_MESSAGE = 'Hello Navratri Companion team, I need help with the platform.';
+
+/**
+ * Known placeholder / demo numbers to guard against using in production.
+ */
+const DEMO_PLACEHOLDER_NUMBERS = [
+  '919876543210',
+  '9876543210',
+  '1234567890',
+  '911234567890',
+  '0000000000',
+];
+
+/**
+ * Checks if a phone number is a known dummy/demo number
+ */
+export function isDemoWhatsAppNumber(phone?: string | null): boolean {
+  if (!phone) return false;
+  const digits = String(phone).replace(/\D/g, '');
+  return DEMO_PLACEHOLDER_NUMBERS.includes(digits);
+}
+
 export interface WhatsAppConfig {
   whatsappNumber: string;
   defaultMessage: string;
@@ -43,13 +78,19 @@ export const CONTEXT_MESSAGES: Record<WhatsAppContextKey, string> = {
 
 /**
  * Cleans phone number to international digits only (no +, -, spaces, or brackets).
- * If a 10-digit Indian mobile is provided (e.g., 9876543210), prepends 91 country code.
+ * If a 10-digit Indian mobile is provided (e.g., 8200564182), prepends 91 country code.
+ * Replaces demo/dummy numbers with the official business number.
  */
-export function cleanWhatsAppNumber(phone: string): string {
-  if (!phone) return '919876543210';
-  const digits = phone.replace(/\D/g, '');
+export function cleanWhatsAppNumber(phone?: string | null): string {
+  if (!phone || isDemoWhatsAppNumber(phone)) {
+    return cleanWhatsAppNumber(WHATSAPP_NUMBER);
+  }
+  let digits = String(phone).replace(/\D/g, '');
   if (digits.length === 10) {
-    return `91${digits}`;
+    digits = `91${digits}`;
+  }
+  if (isDemoWhatsAppNumber(digits)) {
+    return cleanWhatsAppNumber(WHATSAPP_NUMBER);
   }
   return digits;
 }
@@ -83,7 +124,7 @@ export function validateWhatsAppNumber(phone: string): {
   if (finalDigits.length < 10 || finalDigits.length > 15) {
     return {
       isValid: false,
-      errorMessage: 'WhatsApp number must be 10 to 15 digits in international format (e.g. 919876543210).',
+      errorMessage: 'WhatsApp number must be 10 to 15 digits in international format (e.g. 918200564182).',
     };
   }
 
@@ -97,14 +138,16 @@ export function validateWhatsAppNumber(phone: string): {
  * Retrieves the active WhatsApp configuration from System Settings or env fallback
  */
 export function getWhatsAppConfig(): WhatsAppConfig {
-  const defaultEnvNumber =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WHATSAPP_NUMBER) || '919876543210';
-  const defaultEnvMsg =
+  const envNumber =
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WHATSAPP_NUMBER) || '';
+  const envMsg =
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WHATSAPP_DEFAULT_MESSAGE) ||
-    'Hello Navratri Companion team, I need help with the platform.';
+    WHATSAPP_DEFAULT_MESSAGE;
 
-  let whatsappNumber = cleanWhatsAppNumber(defaultEnvNumber);
-  let defaultMessage = defaultEnvMsg;
+  let whatsappNumber = envNumber && !isDemoWhatsAppNumber(envNumber)
+    ? cleanWhatsAppNumber(envNumber)
+    : cleanWhatsAppNumber(WHATSAPP_NUMBER);
+  let defaultMessage = envMsg;
 
   if (typeof window !== 'undefined') {
     try {
@@ -112,8 +155,10 @@ export function getWhatsAppConfig(): WhatsAppConfig {
       if (savedSys) {
         const parsed = JSON.parse(savedSys);
         if (parsed.whatsappNumber && typeof parsed.whatsappNumber === 'string') {
-          const cleaned = cleanWhatsAppNumber(parsed.whatsappNumber);
-          if (cleaned) whatsappNumber = cleaned;
+          if (!isDemoWhatsAppNumber(parsed.whatsappNumber)) {
+            const cleaned = cleanWhatsAppNumber(parsed.whatsappNumber);
+            if (cleaned) whatsappNumber = cleaned;
+          }
         }
         if (parsed.whatsappDefaultMessage && typeof parsed.whatsappDefaultMessage === 'string') {
           defaultMessage = parsed.whatsappDefaultMessage.trim();

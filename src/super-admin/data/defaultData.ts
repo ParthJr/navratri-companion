@@ -153,6 +153,6 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettingsConfig = {
   platformPayeeName: 'Navratri Companion Platform Owner',
 
   // Official Platform WhatsApp Support
-  whatsappNumber: '919876543210',
+  whatsappNumber: '918200564182',
   whatsappDefaultMessage: 'Hello Navratri Companion team, I need help with the platform.',
 };
