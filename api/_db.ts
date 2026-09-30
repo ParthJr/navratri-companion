@@ -500,6 +500,7 @@ export async function getAllUsers(): Promise<UserRecord[]> {
           selfieImage: row.selfie_image,
           policyConsent: row.policy_consent,
           paymentReference: row.payment_reference,
+          transactionId: row.transaction_id || row.transactionId || null,
           paymentSubmittedAt: row.payment_submitted_at,
           approvedAt: row.approved_at,
           approvedBy: row.approved_by,

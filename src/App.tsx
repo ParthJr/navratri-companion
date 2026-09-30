@@ -559,6 +559,7 @@ export default function App() {
       localStorage.setItem('navratri_companion_profile', JSON.stringify(updatedProfile));
       setShowCreateProfileModal(false);
     } else {
+      const isCust = role === 'customer' || role === 'user';
       const newSkeletonProfile: UserProfile = {
         ...(existingUserProfile || INITIAL_USER_PROFILE),
         name: name || 'User',
@@ -570,15 +571,19 @@ export default function App() {
         selfieImage: selfieImg,
         registrationFeePaid: feePaid ?? true,
         idVerified: Boolean(aadhaarImg && selfieImg),
-        hasCompletedProfile: false,
+        hasCompletedProfile: isCust ? true : false,
       };
       setProfile(newSkeletonProfile);
       localStorage.setItem('navratri_companion_profile', JSON.stringify(newSkeletonProfile));
-      setShowCreateProfileModal(true);
+      setShowCreateProfileModal(!isCust);
     }
 
-    // Route to Customer or Companion Dashboard
-    setCurrentView('dashboard');
+    // Route to Customer or Companion Dashboard (or resume booking if companion was selected)
+    if (selectedCompanion && (role === 'customer' || role === 'user')) {
+      setCurrentView('profile-booking');
+    } else {
+      setCurrentView('dashboard');
+    }
   };
 
   const handleSaveProfile = (updated: UserProfile) => {

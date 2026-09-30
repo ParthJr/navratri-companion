@@ -30,6 +30,9 @@ export interface UnifiedAuthResult {
   mustChangePassword?: boolean;
   temporaryPassword?: boolean;
   passwordExpired?: boolean;
+  requiresPayment?: boolean;
+  paymentPendingApproval?: boolean;
+  role?: AccountRole;
 }
 
 /**
@@ -76,6 +79,25 @@ export const authenticateCredentials = async (
         token: data.token,
         mustChangePassword: Boolean(data.account.mustChangePassword),
         temporaryPassword: Boolean(data.account.temporaryPassword),
+      };
+    }
+
+    if (data && data.requiresPayment) {
+      return {
+        success: false,
+        requiresPayment: true,
+        role: data.role || 'companion',
+        account: data.account,
+        errorMessage: data.errorMessage || 'Companion registration fee (₹499) payment is required.',
+      };
+    }
+
+    if (data && data.paymentPendingApproval) {
+      return {
+        success: false,
+        paymentPendingApproval: true,
+        role: data.role || 'companion',
+        errorMessage: data.errorMessage,
       };
     }
 

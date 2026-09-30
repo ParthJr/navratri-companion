@@ -1,6 +1,5 @@
 import React from 'react';
 import { X, Lock, Sparkles, UserPlus, ShieldCheck } from 'lucide-react';
-import { getPlatformUpiConfig } from '../utils/upi';
 
 interface SignUpRequiredModalProps {
   onClose: () => void;
@@ -11,7 +10,6 @@ export const SignUpRequiredModal: React.FC<SignUpRequiredModalProps> = ({
   onClose,
   onSignUp,
 }) => {
-  const { registrationFee } = getPlatformUpiConfig();
   return (
     <div className="fixed inset-0 z-50 bg-[#12001f]/75 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
       <div
@@ -57,7 +55,7 @@ export const SignUpRequiredModal: React.FC<SignUpRequiredModalProps> = ({
               <span>Safety &amp; Verification Flow</span>
             </div>
             <p className="text-[11px] leading-normal">
-              Sign Up → Pay ₹{registrationFee} Registration Fee → Account Activated → Log In → Explore Full Profiles &amp; Booking
+              Free Sign Up → Instant Activation → Explore Verified Profiles &amp; Book Companions Safely
             </p>
           </div>
 

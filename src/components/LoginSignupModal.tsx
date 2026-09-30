@@ -301,6 +301,51 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
       setLoading(false);
 
       if (!result.success || !result.account) {
+        // 1. Existing Companion who has not completed the ₹499 registration:
+        // Show the companion registration/payment continuation. Show "Continue to Registration Fee".
+        if (result.requiresPayment && result.account) {
+          const compAccount: RegisteredUserAccount = {
+            name: result.account.name,
+            phone: result.account.phone,
+            email: result.account.email,
+            userId: result.account.userId,
+            password: cleanPassword,
+            role: 'companion',
+            city: result.account.city || 'Ahmedabad',
+            feePaid: false,
+            status: 'pending_payment',
+          };
+          setPendingAccount(compAccount);
+
+          try {
+            const orderRes = await createPaymentOrderInDb(result.account.userId, 'COMPANION_REGISTRATION', 'UPI');
+            if (orderRes && orderRes.success) {
+              setOrderDetails({
+                orderId: orderRes.orderId,
+                amount: orderRes.amount,
+                baseAmount: orderRes.baseAmount,
+                gstAmount: orderRes.gstAmount,
+                currency: orderRes.currency,
+                keyId: orderRes.keyId,
+              });
+            }
+          } catch (e) {}
+
+          setMode('reg_payment');
+          setErrorMessage(null);
+          return;
+        }
+
+        // 2. Existing Companion who has already paid ₹499 but is waiting for Super Admin approval:
+        // Do NOT ask them to pay ₹499 again. Show their pending approval status.
+        if (result.paymentPendingApproval) {
+          setErrorMessage(
+            result.errorMessage ||
+              'Your ₹499 payment has been submitted and is waiting for Super Admin approval. Please do not submit payment again. Your account will be activated once verified.'
+          );
+          return;
+        }
+
         setErrorMessage(result.errorMessage || 'Invalid User ID or Password.');
         return;
       }
@@ -596,33 +641,45 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
         return;
       }
 
-      // If customer has 0 registration fee, complete signup immediately!
-      if (signupRole === 'customer' && (feeConfigs.customerFee <= 0)) {
+      // ==================================================
+      // CUSTOMER FLOW: Free registration, login immediately, browse & book
+      // ==================================================
+      if (signupRole === 'customer') {
+        // Log in immediately
+        try {
+          const loginResult = await authenticateCredentials(userId, password);
+          if (loginResult.success && loginResult.account) {
+            createSessionForAccount(loginResult.account, loginResult.token);
+            setLoading(false);
+            onSuccess(
+              loginResult.account.name,
+              loginResult.account.phone,
+              loginResult.account.email,
+              loginResult.account.aadhaarImage,
+              loginResult.account.selfieImage,
+              true,
+              loginResult.account.userId,
+              'user'
+            );
+            return;
+          }
+        } catch (autoLoginErr) {
+          console.warn('Customer auto-login notice:', autoLoginErr);
+        }
+
         setLoading(false);
         setMode('login');
-        setSuccessBanner('Account created successfully! Please enter your password to login.');
+        setSuccessBanner('Customer account created successfully! Please enter your password to log in.');
         setLoginIdentifier(userId);
         setLoginPassword('');
         setPendingAccount(null);
-        // Reset signup form
-        setSignupName('');
-        setSignupPhone('');
-        setSignupEmail('');
-        setSignupUserId('');
-        setSignupPassword('');
-        setSignupConfirmPassword('');
-        setSignupProfilePhoto(null);
-        setSignupDob('');
-        setSignupAge('');
-        setSignupBio('');
-        setSignupAadhaarImage(null);
-        setSignupSelfieImage(null);
-        setSignupIdDocument('');
         return;
       }
 
-      // Role requires registration fee (e.g. Companion ₹499 or dynamic fee)
-      const feeCode = signupRole === 'companion' ? 'COMPANION_REGISTRATION' : 'CUSTOMER_REGISTRATION';
+      // ==================================================
+      // COMPANION FLOW: ₹499 registration fee payment & UTR submission
+      // ==================================================
+      const feeCode = 'COMPANION_REGISTRATION';
       const orderRes = await createPaymentOrderInDb(userId, feeCode, 'UPI');
       if (orderRes && orderRes.success) {
         setOrderDetails({
@@ -1417,9 +1474,9 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                 <span>
                   {loading
                     ? 'Creating Account...'
-                    : signupRole === 'customer' && feeConfigs.customerFee <= 0
+                    : signupRole === 'customer'
                     ? 'Complete Registration (Free)'
-                    : `Continue to Registration Fee (₹${signupRole === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee})`}
+                    : `Continue to Registration Fee (₹${feeConfigs.companionFee || 499})`}
                 </span>
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </button>

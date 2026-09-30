@@ -177,15 +177,52 @@ export default async function handler(req: any, res: any) {
       const isCompanion = (dbUser.role || '').toLowerCase() === 'companion';
       if (isCompanion) {
         if (!dbUser.feePaid || pStatus !== 'approved' || aStatus !== 'active') {
-          res.statusCode = 403;
-          return res.end(
-            JSON.stringify({
-              success: false,
-              errorMessage:
-                'Payment verification is pending. Your account will be activated after the Platform Operations Admin confirms your payment.',
-              status: dbUser.paymentStatus,
-            })
+          // Check if companion has already submitted ₹499 payment / transaction ID
+          const hasSubmittedPayment = Boolean(
+            dbUser.transactionId ||
+            dbUser.paymentSubmittedAt ||
+            pStatus === 'payment_submitted' ||
+            aStatus === 'pending_approval' ||
+            (dbUser.paymentReference && dbUser.paymentReference.length > 5)
           );
+
+          if (hasSubmittedPayment) {
+            // Already paid ₹499, waiting for Super Admin approval
+            // Do NOT ask them to pay ₹499 again! Show their pending approval status.
+            res.statusCode = 403;
+            return res.end(
+              JSON.stringify({
+                success: false,
+                paymentPendingApproval: true,
+                role: 'companion',
+                status: 'pending_approval',
+                errorMessage: `Your ₹499 Companion Registration payment (${dbUser.transactionId ? `Transaction ID: ${dbUser.transactionId}` : 'submitted'}) is waiting for Super Admin approval. Please do not submit payment again. Your profile will be activated once verified.`,
+              })
+            );
+          } else {
+            // Has not completed ₹499 registration fee
+            // Show the companion registration/payment continuation. Show "Continue to Registration Fee".
+            res.statusCode = 403;
+            return res.end(
+              JSON.stringify({
+                success: false,
+                requiresPayment: true,
+                role: 'companion',
+                status: 'pending_payment',
+                account: {
+                  userId: dbUser.userId,
+                  name: dbUser.name,
+                  email: dbUser.email,
+                  phone: dbUser.phone || dbUser.mobile,
+                  role: 'companion',
+                  city: dbUser.city || 'Ahmedabad',
+                  status: 'pending_payment',
+                  feePaid: false,
+                },
+                errorMessage: 'Companion registration fee (₹499) payment is required to complete your registration.',
+              })
+            );
+          }
         }
       } else {
         // Customer account: auto-heal any legacy records where customer had pending_payment
