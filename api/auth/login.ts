@@ -1,5 +1,5 @@
 import { generateSessionToken, parseRequestBody, verifyPassword, setSessionCookie } from './_authUtils.ts';
-import { getUserByIdentifier } from '../_db.ts';
+import { getUserByIdentifier, updateUser } from '../_db.ts';
 
 export default async function handler(req: any, res: any) {
   // Set security and CORS headers
@@ -148,7 +148,19 @@ export default async function handler(req: any, res: any) {
       const pStatus = (dbUser.paymentStatus || '').toLowerCase();
       const aStatus = (dbUser.accountStatus || '').toLowerCase();
 
-      const isCompanion = (dbUser.role || '').toLowerCase() === 'companion';
+      // Check account & payment verification status
+      if (pStatus === 'rejected' || aStatus === 'payment_rejected') {
+        res.statusCode = 403;
+        return res.end(
+          JSON.stringify({
+            success: false,
+            errorMessage: `Payment verification was rejected by Platform Operations Admin. Reason: ${
+              dbUser.rejectionReason || 'Invalid payment reference number.'
+            }`,
+            status: 'rejected',
+          })
+        );
+      }
 
       if (aStatus === 'suspended' || aStatus === 'blocked') {
         res.statusCode = 403;
@@ -160,34 +172,35 @@ export default async function handler(req: any, res: any) {
         );
       }
 
-      // COMPANION ONLY: Check ₹499 payment and Super Admin approval status
+      // Check if awaiting payment submission or approval
+      // ONLY enforce registration fee approval for COMPANIONS! Customers are free (₹0) and active immediately.
+      const isCompanion = (dbUser.role || '').toLowerCase() === 'companion';
       if (isCompanion) {
-        if (pStatus === 'rejected' || aStatus === 'payment_rejected') {
-          res.statusCode = 403;
-          return res.end(
-            JSON.stringify({
-              success: false,
-              errorMessage: `Companion registration payment was rejected by Platform Operations Admin. Reason: ${
-                dbUser.rejectionReason || 'Invalid payment reference / transaction ID.'
-              }`,
-              status: 'rejected',
-            })
-          );
-        }
-
         if (!dbUser.feePaid || pStatus !== 'approved' || aStatus !== 'active') {
           res.statusCode = 403;
           return res.end(
             JSON.stringify({
               success: false,
               errorMessage:
-                'Companion verification is pending. Your account will be activated after the Platform Operations Admin reviews and approves your ₹499 registration fee payment.',
+                'Payment verification is pending. Your account will be activated after the Platform Operations Admin confirms your payment.',
               status: dbUser.paymentStatus,
             })
           );
         }
+      } else {
+        // Customer account: auto-heal any legacy records where customer had pending_payment
+        if (!dbUser.feePaid || aStatus !== 'active' || pStatus !== 'approved') {
+          dbUser.feePaid = true;
+          dbUser.accountStatus = 'active';
+          dbUser.paymentStatus = 'approved';
+          dbUser.loginEnabled = true;
+          updateUser(dbUser.userId, {
+            accountStatus: 'active',
+            paymentStatus: 'approved',
+            feePaid: true,
+          }).catch((err) => console.warn('Customer auto-heal update warning:', err));
+        }
       }
-      // CUSTOMER: Free registration, no ₹499 fee, no Super Admin approval. Logs in immediately!
 
       // Account is approved and active!
       const userAccount = {

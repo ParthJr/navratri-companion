@@ -110,8 +110,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       bookedAt: new Date().toISOString(),
     };
 
+    // 1. Persist booking strictly to Central Supabase PostgreSQL Database
     try {
-      // 1. Persist directly to central database via /api/bookings
       await createBookingInDb({
         companionId: companion.id,
         companionName: companion.name,
@@ -131,16 +131,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         city: companion.city || 'Ahmedabad',
         basePrice: basePrice,
         platformFee: platformFee,
-        totalPrice: totalPrice,
         paymentReference: paymentReference,
-        status: 'confirmed',
-        paymentStatus: 'PAID',
       });
-    } catch (err) {
-      console.error('Error saving booking to database:', err);
+    } catch (dbErr) {
+      console.warn('Booking database persistence notice:', dbErr);
     }
 
-    // Also sync local cache for instant UI responsiveness
+    // 2. Save payment transaction record
     try {
       const existingTxns = localStorage.getItem('navratri_payments_config');
       const parsedTxns = existingTxns ? JSON.parse(existingTxns) : [];
@@ -156,7 +153,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         payoutAmount: basePrice,
         paymentMethod: 'UPI' as const,
         status: 'paid' as const,
-        feeType: 'BOOKING_PAYMENT',
         date: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
         gatewayTxnId: paymentReference,
         paymentReference: paymentReference,
@@ -166,10 +162,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       console.error('Error saving payment record:', e);
     }
 
-    setStep('success');
     setTimeout(() => {
-      onPaymentSuccess(newBooking);
-    }, 1400);
+      setStep('success');
+      setTimeout(() => {
+        onPaymentSuccess(newBooking);
+      }, 1400);
+    }, 1500);
   };
 
   return (
@@ -212,7 +210,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         <div className="p-4 sm:p-5 flex flex-col gap-3">
           {step === 'checkout' && (
             <>
-              {/* Order Mini Breakdown */}
+              {/* Order Itemized Breakdown */}
               <div className="bg-[#f5f8ff] p-3 sm:p-3.5 rounded-2xl border border-[#cec3ce]/35 flex flex-col gap-2">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-[#596579] font-medium">Companion Pass</span>
@@ -233,32 +231,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   </span>
                 </div>
 
-                {/* Clear Payment Breakdown (Companion Price + Platform Fee) */}
+                {/* Price Breakdown: Companion Fee + Platform Fee = Total */}
                 <div className="pt-2 border-t border-[#cec3ce]/30 flex flex-col gap-1.5 text-xs">
                   <div className="flex justify-between items-center text-[#596579]">
-                    <span>Companion booking amount</span>
+                    <span>Companion Booking Fee</span>
                     <span className="font-semibold text-[#12001f]">₹{basePrice.toLocaleString('en-IN')}</span>
                   </div>
                   <div className="flex justify-between items-center text-[#596579]">
-                    <span>+ Platform/booking fee</span>
-                    <span className="font-semibold text-[#12001f]">₹{platformFee}</span>
+                    <span>Platform Trust &amp; Safety Fee</span>
+                    <span className="font-semibold text-[#12001f]">₹{platformFee.toLocaleString('en-IN')}</span>
                   </div>
-                  <div className="flex justify-between items-center font-bold text-[#12001f] pt-1 border-t border-dashed border-[#cec3ce]/40">
-                    <span>= Total amount payable</span>
-                    <span className="text-[#9b4500] font-extrabold text-sm">₹{totalPrice.toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-
-                {/* Registration Fee Separation Notice */}
-                <div className="text-[10px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 flex items-center justify-between">
-                  <span>✓ Customer Booking Only</span>
-                  <span className="text-[9px] font-medium text-emerald-700">₹499 companion fee does not apply</span>
                 </div>
 
                 <div className="pt-2 border-t border-[#cec3ce]/30 flex items-center justify-between">
                   <div>
                     <span className="text-[11px] text-[#596579] font-semibold uppercase tracking-wider block">
-                      Total Amount to Pay
+                      Total Payable (in Escrow)
                     </span>
                     <span className="text-[10px] text-emerald-700 font-medium">100% Locked in Escrow</span>
                   </div>

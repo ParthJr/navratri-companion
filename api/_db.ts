@@ -1162,9 +1162,9 @@ export async function getAllPaymentTransactions(): Promise<PaymentTransactionRec
         userRole: user?.role === 'companion' ? 'COMPANION' : 'CUSTOMER',
         feeCode: user?.role === 'companion' ? 'COMPANION_REGISTRATION' : 'CUSTOMER_REGISTRATION',
         feeName: user?.role === 'companion' ? 'Companion Registration Fee' : 'Customer Registration Fee',
-        baseAmount: p.amount || (user?.role === 'companion' ? 499 : 0),
+        baseAmount: p.amount || 499,
         gstAmount: 0,
-        totalAmount: p.amount || (user?.role === 'companion' ? 499 : 0),
+        totalAmount: p.amount || 499,
         currency: 'INR',
         status: isApproved ? 'PAID' : isRejected ? 'PAYMENT_REJECTED' : isSubmitted ? 'PAYMENT_SUBMITTED' : 'PENDING',
         gateway: 'DIRECT_UPI',
@@ -1808,6 +1808,8 @@ export async function getActiveCompanions(): Promise<any[]> {
   const defaultVenues = ['GMDC Ground, Ahmedabad', 'Rajpath Club', 'Karnavati Club'];
 
   const rawCandidates: any[] = [];
+  let dbFetchFailed = false;
+  let lastDbError = '';
 
   // 1. Fetch approved host applications from Supabase
   if (supabase) {
@@ -1815,13 +1817,24 @@ export async function getActiveCompanions(): Promise<any[]> {
       const { data: appData, error: appError } = await supabase
         .from('host_applications')
         .select('*')
-        .or('status.eq.approved,review_status.eq.Approved')
+        .or('status.eq.approved,status.eq.active,review_status.eq.Approved,review_status.ilike.%approved%')
         .order('created_at', { ascending: false });
 
-      if (!appError && appData) {
+      if (appError) {
+        dbFetchFailed = true;
+        lastDbError = appError.message;
+        console.error('[DATABASE_ERROR] getActiveCompanions host_applications failed:', {
+          endpoint: '/api/companions',
+          operation: 'SELECT * FROM host_applications WHERE status = approved OR review_status ILIKE %approved%',
+          code: appError.code,
+          message: appError.message,
+          details: appError.details,
+          hint: appError.hint,
+        });
+      } else if (appData) {
         for (const row of appData) {
           rawCandidates.push({
-            id: row.id,
+            id: row.user_id || row.id,
             userId: row.user_id,
             name: row.name,
             age: row.age,
@@ -1836,26 +1849,45 @@ export async function getActiveCompanions(): Promise<any[]> {
             status: row.status,
             reviewStatus: row.review_status,
             phoneVerified: row.phone_verified,
-            registrationFeePaid: row.registration_fee_paid,
+            registrationFeePaid: row.registration_fee_paid ?? true,
+            feePaid: true,
             source: 'host_application',
           });
         }
       }
     } catch (e: any) {
-      console.warn('Supabase getActiveCompanions applications warning:', e?.message);
+      dbFetchFailed = true;
+      lastDbError = e?.message || 'Database exception';
+      console.error('[DATABASE_EXCEPTION] getActiveCompanions host_applications exception:', {
+        endpoint: '/api/companions',
+        operation: 'host_applications',
+        message: e?.message,
+      });
     }
 
-    // 2. Fetch active companion users from Supabase
+    // 2. Fetch active companion users from Supabase (strictly role = companion)
     try {
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .ilike('role', 'companion')
-        .eq('account_status', 'active')
+        .or('account_status.eq.active,and(payment_status.eq.approved,fee_paid.eq.true)')
         .order('created_at', { ascending: false });
 
-      if (!userError && userData) {
+      if (userError) {
+        dbFetchFailed = true;
+        lastDbError = userError.message;
+        console.error('[DATABASE_ERROR] getActiveCompanions users query failed:', {
+          endpoint: '/api/companions',
+          operation: 'SELECT * FROM users WHERE role = companion',
+          code: userError.code,
+          message: userError.message,
+          details: userError.details,
+          hint: userError.hint,
+        });
+      } else if (userData) {
         for (const row of userData) {
+          if (row.role && row.role.toLowerCase() === 'customer') continue;
           rawCandidates.push({
             id: row.user_id || row.id,
             userId: row.user_id,
@@ -1872,24 +1904,33 @@ export async function getActiveCompanions(): Promise<any[]> {
             status: row.account_status,
             reviewStatus: 'Approved',
             phoneVerified: true,
-            registrationFeePaid: row.fee_paid,
+            registrationFeePaid: Boolean(row.fee_paid),
+            feePaid: Boolean(row.fee_paid),
             source: 'user',
           });
         }
       }
     } catch (e: any) {
-      console.warn('Supabase getActiveCompanions users warning:', e?.message);
+      dbFetchFailed = true;
+      lastDbError = e?.message || 'Database exception';
+      console.error('[DATABASE_EXCEPTION] getActiveCompanions users exception:', {
+        endpoint: '/api/companions',
+        operation: 'users',
+        message: e?.message,
+      });
     }
+  } else {
+    console.error('[DATABASE_ERROR] getActiveCompanions: Supabase client is null or unconfigured.');
   }
 
-  // 3. Merge with approved applications from resilient local store
+  // 3. Merge with approved applications from resilient local store (if available)
   for (const app of Object.values(storeMemory.applications)) {
     const isApproved =
       app.status === 'approved' ||
-      (app.reviewStatus && app.reviewStatus.toLowerCase() === 'approved');
+      (app.reviewStatus && app.reviewStatus.toLowerCase().includes('approved'));
     if (isApproved && app.status !== 'suspended' && app.status !== 'rejected') {
       rawCandidates.push({
-        id: app.id,
+        id: app.userId || app.id,
         userId: app.userId,
         name: app.name,
         age: app.age,
@@ -1905,6 +1946,7 @@ export async function getActiveCompanions(): Promise<any[]> {
         reviewStatus: app.reviewStatus,
         phoneVerified: app.phoneVerified,
         registrationFeePaid: app.registrationFeePaid,
+        feePaid: true,
         source: 'local_application',
       });
     }
@@ -1935,9 +1977,15 @@ export async function getActiveCompanions(): Promise<any[]> {
         reviewStatus: 'Approved',
         phoneVerified: true,
         registrationFeePaid: u.feePaid,
+        feePaid: u.feePaid,
         source: 'local_user',
       });
     }
+  }
+
+  // If Supabase queries failed and we got zero candidates, throw explicit error
+  if (dbFetchFailed && rawCandidates.length === 0) {
+    throw new Error(`Database error fetching companion listings: ${lastDbError || 'Query failed'}`);
   }
 
   // 5. Deduplicate by unique companion identifier / user / name
@@ -1947,6 +1995,8 @@ export async function getActiveCompanions(): Promise<any[]> {
   for (const cand of rawCandidates) {
     if (!cand.name || !String(cand.name).trim()) continue;
     if (cand.status === 'suspended' || cand.status === 'rejected' || cand.status === 'deleted') continue;
+    // Strictly exclude customers
+    if (cand.role && cand.role.toLowerCase() === 'customer') continue;
 
     const rawPk = cand.userId ?? cand.id ?? cand.name ?? '';
     const primaryKey = String(rawPk).toLowerCase().trim();
@@ -1971,7 +2021,8 @@ export async function getActiveCompanions(): Promise<any[]> {
 
     // Safe public projection - excludes sensitive PII (Aadhaar, passwords, private documents)
     const publicProfile = {
-      id: cand.id || cand.userId,
+      id: cand.userId || cand.id,
+      userId: cand.userId || cand.id,
       name: cand.name.trim(),
       age: Number(cand.age) || 22,
       city: cityClean as 'Ahmedabad' | 'Gandhinagar',
@@ -1999,9 +2050,10 @@ export async function getActiveCompanions(): Promise<any[]> {
       inclusions: ['Festival Guidance', 'Cultural Orientation'],
       preferredVenues: defaultVenues,
       status: 'active',
+      feePaid: true,
+      registrationFeePaid: true,
       hasCompletedProfile: true,
       isVerified: true,
-      registrationFeePaid: true,
     };
 
     uniqueCompanions.set(primaryKey, publicProfile);

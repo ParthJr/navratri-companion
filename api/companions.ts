@@ -20,7 +20,11 @@ export default async function handler(req: any, res: any) {
       })
     );
   } catch (err: any) {
-    console.error('Error fetching companions:', err);
+    console.error('[API_ERROR] /api/companions error:', {
+      endpoint: '/api/companions',
+      message: err?.message,
+      stack: err?.stack,
+    });
     res.statusCode = 500;
     return res.end(
       JSON.stringify({

@@ -1,4 +1,4 @@
-import { getAllApplications, getAllUsers } from '../_db.ts';
+import { getAllApplications } from '../_db.ts';
 import { requireAdminAuth } from '../auth/_authUtils.ts';
 
 export default async function handler(req: any, res: any) {
@@ -16,25 +16,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const [rawApplications, users] = await Promise.all([
-      getAllApplications(),
-      getAllUsers(),
-    ]);
-
-    const userMap = new Map<string, any>();
-    users.forEach((u) => {
-      userMap.set(u.userId.toLowerCase(), u);
-    });
-
-    // Customer accounts must NOT appear in Super Admin approval applications
-    const applications = rawApplications.filter((app) => {
-      const u = userMap.get(app.userId.toLowerCase());
-      if (u && u.role === 'customer') {
-        return false;
-      }
-      return true;
-    });
-
+    const applications = await getAllApplications();
     const pendingCount = applications.filter((a) => a.status === 'pending_review' || a.status === 'pending').length;
     const approvedCount = applications.filter((a) => a.status === 'approved').length;
     const rejectedCount = applications.filter((a) => a.status === 'rejected').length;

@@ -199,7 +199,7 @@ export default async function handler(req: any, res: any) {
 
     const now = new Date().toISOString();
 
-    const isCompanion = role === 'companion';
+    const isCustomer = role === 'customer';
 
     const newUser: UserRecord = {
       id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -211,16 +211,14 @@ export default async function handler(req: any, res: any) {
       password: hashPassword(password),
       role: role,
       city: city,
-      // CUSTOMER: Free registration, active immediately, no approval needed
-      // COMPANION: Pending ₹499 payment and Super Admin approval
-      accountStatus: isCompanion ? 'pending_payment' : 'active',
-      paymentStatus: isCompanion ? 'pending' : 'approved',
-      feePaid: isCompanion ? false : true,
-      profileStatus: 'created',
-      verificationStatus: isCompanion
-        ? (aadhaarImage && selfieImage ? 'id_submitted' : 'unverified')
-        : 'verified',
-      loginEnabled: isCompanion ? false : true,
+      // Customers: Free (₹0), active immediately, no Super Admin approval needed.
+      // Companions: Paid (₹499), pending payment/approval, requires Admin verification.
+      accountStatus: isCustomer ? 'active' : 'pending_payment',
+      paymentStatus: isCustomer ? 'approved' : 'pending',
+      feePaid: isCustomer ? true : false,
+      profileStatus: isCustomer ? 'completed' : 'created',
+      verificationStatus: isCustomer ? 'verified' : (aadhaarImage && selfieImage ? 'id_submitted' : 'unverified'),
+      loginEnabled: isCustomer ? true : false,
       profilePhoto: profilePhoto,
       dateOfBirth: dateOfBirth || undefined,
       age: age,
@@ -231,8 +229,8 @@ export default async function handler(req: any, res: any) {
       hourlyRate: hourlyRate || undefined,
       idDocument: idDocument || undefined,
       faceMatchScore: 'Not performed',
-      phoneVerified: !isCompanion,
-      reviewStatus: isCompanion ? 'Pending Review' : 'Approved',
+      phoneVerified: isCustomer ? true : false,
+      reviewStatus: isCustomer ? 'Approved' : 'Pending Review',
       aadhaarImage: aadhaarImage || '',
       selfieImage: selfieImage || '',
       policyConsent: policyConsent,

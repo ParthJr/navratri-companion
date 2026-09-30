@@ -596,30 +596,8 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
         return;
       }
 
-      // Customer registration is 100% Free with immediate login and NO Super Admin approval!
-      if (signupRole === 'customer') {
-        // Authenticate immediately to provide seamless onboarding
-        try {
-          const authRes = await authenticateCredentials(userId, password);
-          if (authRes.success && authRes.account) {
-            createSessionForAccount(authRes.account);
-            setLoading(false);
-            onSuccess(
-              authRes.account.name,
-              authRes.account.phone,
-              authRes.account.email,
-              authRes.account.aadhaarImage,
-              authRes.account.selfieImage,
-              true,
-              authRes.account.userId,
-              'user'
-            );
-            return;
-          }
-        } catch (_) {
-          // If auto-login fails, fall back to switching to login mode
-        }
-
+      // If customer has 0 registration fee, complete signup immediately!
+      if (signupRole === 'customer' && (feeConfigs.customerFee <= 0)) {
         setLoading(false);
         setMode('login');
         setSuccessBanner('Account created successfully! Please enter your password to login.');
@@ -958,12 +936,9 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                         {signupRole === 'customer' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[11px] font-semibold text-[#9b4500]">CUSTOMER</span>
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full">FREE</span>
-                    </div>
+                    <span className="text-[11px] font-semibold text-[#9b4500]">CUSTOMER</span>
                     <p className="text-[10px] text-[#596579] leading-tight mt-0.5">
-                      Free Registration • Instant Access • No ₹499 fee
+                      Find verified local companions for Garba festivals &amp; events
                     </p>
                   </button>
 
@@ -984,12 +959,9 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                         {signupRole === 'companion' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[11px] font-semibold text-[#9b4500]">COMPANION</span>
-                      <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.5 rounded-full">₹499 FEE</span>
-                    </div>
+                    <span className="text-[11px] font-semibold text-[#9b4500]">COMPANION</span>
                     <p className="text-[10px] text-[#596579] leading-tight mt-0.5">
-                      ₹499 Registration Fee • Super Admin verification required
+                      Create host profile, guide visitors &amp; receive paid bookings
                     </p>
                   </button>
                 </div>
@@ -1445,9 +1417,9 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                 <span>
                   {loading
                     ? 'Creating Account...'
-                    : signupRole === 'customer'
+                    : signupRole === 'customer' && feeConfigs.customerFee <= 0
                     ? 'Complete Registration (Free)'
-                    : `Continue to Registration Fee (₹${feeConfigs.companionFee || 499})`}
+                    : `Continue to Registration Fee (₹${signupRole === 'companion' ? feeConfigs.companionFee : feeConfigs.customerFee})`}
                 </span>
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </button>
