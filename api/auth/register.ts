@@ -199,6 +199,8 @@ export default async function handler(req: any, res: any) {
 
     const now = new Date().toISOString();
 
+    const isCompanion = role === 'companion';
+
     const newUser: UserRecord = {
       id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       userId: userId,
@@ -209,12 +211,16 @@ export default async function handler(req: any, res: any) {
       password: hashPassword(password),
       role: role,
       city: city,
-      accountStatus: 'pending_payment',
-      paymentStatus: 'pending',
-      feePaid: false,
+      // CUSTOMER: Free registration, active immediately, no approval needed
+      // COMPANION: Pending ₹499 payment and Super Admin approval
+      accountStatus: isCompanion ? 'pending_payment' : 'active',
+      paymentStatus: isCompanion ? 'pending' : 'approved',
+      feePaid: isCompanion ? false : true,
       profileStatus: 'created',
-      verificationStatus: aadhaarImage && selfieImage ? 'id_submitted' : 'unverified',
-      loginEnabled: false,
+      verificationStatus: isCompanion
+        ? (aadhaarImage && selfieImage ? 'id_submitted' : 'unverified')
+        : 'verified',
+      loginEnabled: isCompanion ? false : true,
       profilePhoto: profilePhoto,
       dateOfBirth: dateOfBirth || undefined,
       age: age,
@@ -225,8 +231,8 @@ export default async function handler(req: any, res: any) {
       hourlyRate: hourlyRate || undefined,
       idDocument: idDocument || undefined,
       faceMatchScore: 'Not performed',
-      phoneVerified: false,
-      reviewStatus: 'Pending Review',
+      phoneVerified: !isCompanion,
+      reviewStatus: isCompanion ? 'Pending Review' : 'Approved',
       aadhaarImage: aadhaarImage || '',
       selfieImage: selfieImage || '',
       policyConsent: policyConsent,

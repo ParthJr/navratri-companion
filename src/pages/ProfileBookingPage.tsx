@@ -552,18 +552,22 @@ export const ProfileBookingPage: React.FC<ProfileBookingPageProps> = ({
               </div>
 
               {/* Price Breakdown */}
-              <div className="flex flex-col gap-2 pt-2 border-t border-[#cec3ce]/30">
+              <div className="flex flex-col gap-2 pt-2 border-t border-[#cec3ce]/30 bg-white p-3.5 rounded-xl border border-[#cec3ce]/40">
                 <div className="flex justify-between text-xs sm:text-sm text-[#596579]">
-                  <span>Companion Experience Fee</span>
-                  <span className="font-medium text-[#12001f]">₹{basePrice.toLocaleString('en-IN')}</span>
+                  <span>Companion booking amount</span>
+                  <span className="font-semibold text-[#12001f]">₹{basePrice.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm text-[#596579]">
-                  <span>Platform Trust &amp; Safety Fee</span>
-                  <span className="font-medium text-[#12001f]">₹{platformFee}</span>
+                  <span>+ Platform/booking fee</span>
+                  <span className="font-semibold text-[#12001f]">₹{platformFee}</span>
                 </div>
-                <div className="flex justify-between font-['Plus_Jakarta_Sans'] font-bold text-lg text-[#12001f] pt-2 border-t border-[#cec3ce]/30">
-                  <span>Total Payable</span>
+                <div className="flex justify-between font-['Plus_Jakarta_Sans'] font-bold text-base sm:text-lg text-[#12001f] pt-2 border-t border-[#cec3ce]/30">
+                  <span>= Total amount payable</span>
                   <span className="text-[#9b4500]">₹{totalPrice.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="mt-1 text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200/60 flex items-center justify-between">
+                  <span className="font-medium">✓ Customer Booking Only</span>
+                  <span className="text-[10px] text-emerald-700 font-normal">₹499 companion registration fee does not apply</span>
                 </div>
               </div>
 

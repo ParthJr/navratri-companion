@@ -1,4 +1,12 @@
-import { getAllBookings, createBookingRecord, updateBookingRecord, createPayoutRecord, type BookingRecord } from './_db.ts';
+import {
+  getAllBookings,
+  createBookingRecord,
+  updateBookingRecord,
+  createPayoutRecord,
+  createPaymentTransactionRecord,
+  type BookingRecord,
+  type PaymentTransactionRecord,
+} from './_db.ts';
 import { parseRequestBody } from './auth/_authUtils.ts';
 
 export default async function handler(req: any, res: any) {
@@ -152,8 +160,8 @@ export default async function handler(req: any, res: any) {
         platformFee: numFee,
         totalPrice: total,
         companionEarnings: numBase,
-        status: 'PENDING_PAYMENT_VERIFICATION',
-        paymentStatus: 'PENDING',
+        status: body.status || 'confirmed',
+        paymentStatus: body.paymentStatus || 'PAID',
         paymentReference: paymentReference || `UPI-${bookingRef}`,
         escrowStatus: 'Held in Escrow',
         completionOtp: completionOtp,
@@ -163,11 +171,44 @@ export default async function handler(req: any, res: any) {
       };
 
       const saved = await createBookingRecord(newBooking);
+
+      // Store Customer Booking Payment separately in payment_transactions
+      // Purpose: BOOKING_PAYMENT (Companion Price + Platform Fee; strictly NO ₹499 registration fee)
+      try {
+        const bookingTxn: PaymentTransactionRecord = {
+          id: `txn_book_${Date.now()}_${randomSuffix}`,
+          userId: customerId || 'guest',
+          userName: customerName.trim(),
+          userPhone: customerPhone || '',
+          userRole: 'CUSTOMER',
+          feeCode: 'BOOKING_PAYMENT',
+          feeName: 'Companion Booking Payment',
+          baseAmount: numBase,
+          gstAmount: 0,
+          totalAmount: total,
+          currency: 'INR',
+          status: 'PAID',
+          gateway: 'DIRECT_UPI',
+          orderId: bookingRef,
+          paymentId: paymentReference || `UPI-${bookingRef}`,
+          transactionId: body.transactionId || paymentReference || `UPI-${bookingRef}`,
+          paymentReference: paymentReference || `UPI-${bookingRef}`,
+          paymentMethod: 'UPI',
+          paidAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          notes: `Booking for companion ${companionName} (${durationPackage}) at ${venue}`,
+        };
+        await createPaymentTransactionRecord(bookingTxn);
+      } catch (txnErr) {
+        console.warn('Booking transaction record notice:', txnErr);
+      }
+
       res.statusCode = 200;
       return res.end(
         JSON.stringify({
           success: true,
-          message: 'Booking request created successfully. Platform Admin will verify payment.',
+          message: 'Booking request created and confirmed in escrow successfully.',
           booking: saved,
         })
       );

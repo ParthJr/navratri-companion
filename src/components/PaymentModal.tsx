@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { DynamicUpiQr } from './DynamicUpiQr';
 import { getPlatformUpiConfig, generatePaymentReference } from '../utils/upi';
+import { createBookingInDb } from '../services/dbService';
 
 interface PaymentModalProps {
   companion: Companion;
@@ -78,69 +79,97 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [tempBookingId] = useState(() => `78${Math.floor(10 + Math.random() * 90)}`);
   const paymentReference = generatePaymentReference(loggedInProfile.userId || 'guest', 'BOOK', tempBookingId);
 
-  const handlePay = () => {
+  const handlePay = async () => {
     setIsProcessing(true);
     setStep('processing');
 
-    setTimeout(() => {
-      // New booking flow: NO START OTP!
-      const newBooking: Booking = {
-        id: `NC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+    const newBooking: Booking = {
+      id: `NC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      companionId: companion.id,
+      companionName: companion.name,
+      companionAge: companion.age,
+      companionCity: companion.city,
+      companionAvatar: companion.avatarUrl,
+      companionPhone: companion.phone,
+      companionUpi: `${companion.name.toLowerCase().replace(/\s+/g, '')}@okaxis`,
+      guestName: loggedInProfile.name || 'Verified Guest',
+      guestPhone: loggedInProfile.phone || '+91 98765 00000',
+      date: selectedDate,
+      rawDate: rawDate,
+      timeSlot: timeSlot,
+      duration: packageTier,
+      venue: venue || 'Mutually agreed public location',
+      baseFee: basePrice,
+      platformFee: platformFee,
+      totalFee: totalPrice,
+      status: 'confirmed',
+      escrowStatus: 'Held in Escrow',
+      checkedIn: false,
+      sessionStarted: false,
+      payoutStatus: 'escrow_held',
+      bookedAt: new Date().toISOString(),
+    };
+
+    try {
+      // 1. Persist directly to central database via /api/bookings
+      await createBookingInDb({
         companionId: companion.id,
         companionName: companion.name,
+        companionPhone: companion.phone,
+        companionUpi: `${companion.name.toLowerCase().replace(/\s+/g, '')}@okaxis`,
         companionAge: companion.age,
         companionCity: companion.city,
         companionAvatar: companion.avatarUrl,
-        companionPhone: companion.phone,
-        companionUpi: `${companion.name.toLowerCase().replace(/\s+/g, '')}@okaxis`,
-        guestName: loggedInProfile.name || 'Verified Guest',
-        guestPhone: loggedInProfile.phone || '+91 98765 00000',
+        customerId: loggedInProfile.userId || 'guest',
+        customerName: loggedInProfile.name || 'Verified Guest',
+        customerPhone: loggedInProfile.phone || '+91 98765 00000',
         date: selectedDate,
         rawDate: rawDate,
         timeSlot: timeSlot,
-        duration: packageTier,
+        durationPackage: packageTier,
         venue: venue || 'Mutually agreed public location',
-        baseFee: basePrice,
+        city: companion.city || 'Ahmedabad',
+        basePrice: basePrice,
         platformFee: platformFee,
-        totalFee: totalPrice,
+        totalPrice: totalPrice,
+        paymentReference: paymentReference,
         status: 'confirmed',
-        escrowStatus: 'Held in Escrow',
-        checkedIn: false,
-        sessionStarted: false,
-        payoutStatus: 'escrow_held',
-        bookedAt: new Date().toISOString(),
+        paymentStatus: 'PAID',
+      });
+    } catch (err) {
+      console.error('Error saving booking to database:', err);
+    }
+
+    // Also sync local cache for instant UI responsiveness
+    try {
+      const existingTxns = localStorage.getItem('navratri_payments_config');
+      const parsedTxns = existingTxns ? JSON.parse(existingTxns) : [];
+      const newTxnRecord = {
+        id: `PAY-${Date.now()}`,
+        bookingId: newBooking.id,
+        customerName: newBooking.guestName,
+        customerPhone: newBooking.guestPhone,
+        companionName: companion.name,
+        amount: totalPrice,
+        platformFee: platformFee,
+        gatewayFee: 0,
+        payoutAmount: basePrice,
+        paymentMethod: 'UPI' as const,
+        status: 'paid' as const,
+        feeType: 'BOOKING_PAYMENT',
+        date: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+        gatewayTxnId: paymentReference,
+        paymentReference: paymentReference,
       };
+      localStorage.setItem('navratri_payments_config', JSON.stringify([newTxnRecord, ...parsedTxns]));
+    } catch (e) {
+      console.error('Error saving payment record:', e);
+    }
 
-      // Save payment transaction record
-      try {
-        const existingTxns = localStorage.getItem('navratri_payments_config');
-        const parsedTxns = existingTxns ? JSON.parse(existingTxns) : [];
-        const newTxnRecord = {
-          id: `PAY-${Date.now()}`,
-          bookingId: newBooking.id,
-          customerName: newBooking.guestName,
-          customerPhone: newBooking.guestPhone,
-          companionName: companion.name,
-          amount: totalPrice,
-          platformFee: platformFee,
-          gatewayFee: 0,
-          payoutAmount: basePrice,
-          paymentMethod: 'UPI' as const,
-          status: 'paid' as const,
-          date: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
-          gatewayTxnId: paymentReference,
-          paymentReference: paymentReference,
-        };
-        localStorage.setItem('navratri_payments_config', JSON.stringify([newTxnRecord, ...parsedTxns]));
-      } catch (e) {
-        console.error('Error saving payment record:', e);
-      }
-
-      setStep('success');
-      setTimeout(() => {
-        onPaymentSuccess(newBooking);
-      }, 1400);
-    }, 1600);
+    setStep('success');
+    setTimeout(() => {
+      onPaymentSuccess(newBooking);
+    }, 1400);
   };
 
   return (
@@ -202,6 +231,28 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <span className="font-semibold text-[#12001f] truncate max-w-[210px]">
                     {venue}
                   </span>
+                </div>
+
+                {/* Clear Payment Breakdown (Companion Price + Platform Fee) */}
+                <div className="pt-2 border-t border-[#cec3ce]/30 flex flex-col gap-1.5 text-xs">
+                  <div className="flex justify-between items-center text-[#596579]">
+                    <span>Companion booking amount</span>
+                    <span className="font-semibold text-[#12001f]">₹{basePrice.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[#596579]">
+                    <span>+ Platform/booking fee</span>
+                    <span className="font-semibold text-[#12001f]">₹{platformFee}</span>
+                  </div>
+                  <div className="flex justify-between items-center font-bold text-[#12001f] pt-1 border-t border-dashed border-[#cec3ce]/40">
+                    <span>= Total amount payable</span>
+                    <span className="text-[#9b4500] font-extrabold text-sm">₹{totalPrice.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+
+                {/* Registration Fee Separation Notice */}
+                <div className="text-[10px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 flex items-center justify-between">
+                  <span>✓ Customer Booking Only</span>
+                  <span className="text-[9px] font-medium text-emerald-700">₹499 companion fee does not apply</span>
                 </div>
 
                 <div className="pt-2 border-t border-[#cec3ce]/30 flex items-center justify-between">

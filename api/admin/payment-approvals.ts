@@ -27,8 +27,24 @@ export default async function handler(req: any, res: any) {
       userMap.set(u.userId.toLowerCase(), u);
     });
 
+    // Registration payment approval requests are strictly for COMPANION registration fee verification (₹499).
+    // Customers have free registration, never pay ₹499, and never require Super Admin payment approval.
+    const companionPayments = payments.filter((p) => {
+      const u = userMap.get(p.userId.toLowerCase());
+      const role = (p.role || u?.role || '').toLowerCase();
+      // Must not be a customer
+      if (role === 'customer' || u?.role === 'customer') {
+        return false;
+      }
+      // Must not be a customer booking payment
+      if (p.feeType === 'BOOKING_PAYMENT') {
+        return false;
+      }
+      return true;
+    });
+
     // Query registration_payments directly from central Supabase PostgreSQL
-    const approvalRequests = payments.map((p) => {
+    const approvalRequests = companionPayments.map((p) => {
       const u = userMap.get(p.userId.toLowerCase());
       const pStatus = (p.paymentStatus || 'PENDING').toUpperCase();
 
