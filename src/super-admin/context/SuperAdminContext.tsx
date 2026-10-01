@@ -729,8 +729,12 @@ export const SuperAdminProvider: React.FC<{
         if (
           savedUser.adminId?.toLowerCase() === cleanId ||
           cleanId === 'parthjunior23' ||
+          cleanId === 'admin' ||
+          cleanId === 'superadmin' ||
           cleanId === 'owner_admin' ||
-          cleanId === 'owner'
+          cleanId === 'owner' ||
+          cleanId === 'admin@navratricompanion.com' ||
+          cleanId === 'owner@navratricompanion.com'
         ) {
           const updatedUser: AdminUser = {
             ...savedUser,

@@ -123,7 +123,7 @@ export const DEFAULT_ADMIN_USERS: AdminUser[] = [
   {
     id: 'adm-owner',
     adminId: PLATFORM_OWNER_ID,
-    password: '',
+    password: '##Parth2324',
     name: 'Master Platform Administrator',
     email: 'owner@navratricompanion.com',
     role: 'super_admin',

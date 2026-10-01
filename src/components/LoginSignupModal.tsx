@@ -14,8 +14,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { DynamicUpiQr } from './DynamicUpiQr';
-import { getPlatformUpiConfig, generatePaymentReference } from '../utils/upi';
 import { useSuperAdmin } from '../super-admin/context/SuperAdminContext';
+import { authenticateCredentials, createSessionForAccount } from '../services/unifiedAuth';
 import {
   registerUserInDb,
   submitRegistrationPaymentToDb,
@@ -120,6 +120,7 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
   onAdminLoginSuccess,
   onOpenLegalPolicy,
 }) => {
+  const { login: adminLogin } = useSuperAdmin();
   // Mode state: 'login' | 'signup' | 'reg_payment' | 'change_password'
   const [mode, setMode] = useState<'login' | 'signup' | 'reg_payment' | 'change_password'>(initialMode);
   const [pendingAccount, setPendingAccount] = useState<RegisteredUserAccount | null>(null);
