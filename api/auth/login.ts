@@ -142,8 +142,10 @@ export default async function handler(req: any, res: any) {
       const pStatus = (dbUser.paymentStatus || '').toLowerCase();
       const aStatus = (dbUser.accountStatus || '').toLowerCase();
 
-      // Check account & payment verification status
-      if (pStatus === 'rejected' || aStatus === 'payment_rejected') {
+      const isCompanion = (dbUser.role || '').toLowerCase() === 'companion';
+
+      // Check payment rejection status ONLY for companions who require payment
+      if (isCompanion && (pStatus === 'rejected' || aStatus === 'payment_rejected')) {
         res.statusCode = 403;
         return res.end(
           JSON.stringify({
@@ -168,7 +170,6 @@ export default async function handler(req: any, res: any) {
 
       // Check if awaiting payment submission or approval
       // ONLY enforce registration fee approval for COMPANIONS! Customers are free (₹0) and active immediately.
-      const isCompanion = (dbUser.role || '').toLowerCase() === 'companion';
       if (isCompanion) {
         if (!dbUser.feePaid || pStatus !== 'approved' || aStatus !== 'active') {
           // Check if companion has already submitted ₹499 payment / transaction ID

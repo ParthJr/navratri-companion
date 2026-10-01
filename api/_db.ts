@@ -615,7 +615,7 @@ export async function getAllUsers(): Promise<UserRecord[]> {
           feePaid: Boolean(row.fee_paid),
           profileStatus: row.profile_status || 'created',
           verificationStatus: row.verification_status || 'id_submitted',
-          loginEnabled: Boolean(row.login_enabled ?? (row.account_status === 'active' && row.fee_paid)),
+          loginEnabled: (row.role === 'customer' || row.role === 'user') ? (row.account_status !== 'suspended' && row.account_status !== 'blocked') : Boolean(row.account_status === 'active' && row.fee_paid),
           profilePhoto: row.profile_photo || '',
           dateOfBirth: row.date_of_birth,
           age: row.age ? Number(row.age) : undefined,
@@ -680,7 +680,7 @@ export async function getAllUsers(): Promise<UserRecord[]> {
 
 export async function getUserByIdentifier(identifier: string): Promise<UserRecord | null> {
   if (!identifier) return null;
-  const clean = identifier.trim().toLowerCase();
+  const clean = identifier.trim().replace(/^@/, '').toLowerCase();
   const cleanPhone = clean.replace(/[^0-9]/g, '');
 
   if (SUPER_ADMIN_IDENTIFIERS.includes(clean)) {
@@ -734,7 +734,7 @@ export async function getUserByIdentifier(identifier: string): Promise<UserRecor
           feePaid: Boolean(row.fee_paid),
           profileStatus: row.profile_status || 'created',
           verificationStatus: row.verification_status || 'id_submitted',
-          loginEnabled: Boolean(row.login_enabled ?? (row.account_status === 'active' && row.fee_paid)),
+          loginEnabled: (row.role === 'customer' || row.role === 'user') ? (row.account_status !== 'suspended' && row.account_status !== 'blocked') : Boolean(row.account_status === 'active' && row.fee_paid),
           profilePhoto: row.profile_photo || '',
           dateOfBirth: row.date_of_birth,
           age: row.age ? Number(row.age) : undefined,
@@ -785,13 +785,62 @@ export async function getUserByIdentifier(identifier: string): Promise<UserRecor
   return null;
 }
 
+export const KNOWN_USERS_COLUMNS = new Set([
+  'id',
+  'user_id',
+  'name',
+  'email',
+  'phone',
+  'password_hash',
+  'role',
+  'city',
+  'account_status',
+  'payment_status',
+  'fee_paid',
+  'profile_status',
+  'verification_status',
+  'aadhaar_image',
+  'selfie_image',
+  'policy_consent',
+  'created_at',
+  'updated_at',
+  'profile_photo',
+  'date_of_birth',
+  'age',
+  'bio',
+  'languages',
+  'garba_style',
+  'available_cities',
+  'hourly_rate',
+  'id_document',
+  'face_match_score',
+  'phone_verified',
+  'review_status',
+  'payment_reference',
+  'payment_submitted_at',
+  'approved_at',
+  'approved_by',
+  'rejected_at',
+  'rejection_reason',
+]);
+
+export function filterKnownUserColumns(payload: Record<string, any>): Record<string, any> {
+  const filtered: Record<string, any> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (KNOWN_USERS_COLUMNS.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
+}
+
 export async function createUser(user: UserRecord): Promise<UserRecord> {
   const supabase = getSupabaseClient();
 
-  const insertPayload = {
-    user_id: user.userId,
+  const insertPayload = filterKnownUserColumns({
+    user_id: user.userId.trim(),
     name: user.name,
-    email: user.email,
+    email: user.email.trim(),
     phone: user.phone || user.mobile,
     password_hash: user.password,
     role: user.role || 'customer',
@@ -817,11 +866,10 @@ export async function createUser(user: UserRecord): Promise<UserRecord> {
     selfie_image: user.selfieImage || '',
     policy_consent: user.policyConsent || {},
     payment_reference: user.paymentReference || '',
-    transaction_id: user.transactionId || null,
     payment_submitted_at: user.paymentSubmittedAt || null,
     created_at: user.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  };
+  });
 
   let savedRecord: UserRecord = { ...user };
 
@@ -841,13 +889,15 @@ export async function createUser(user: UserRecord): Promise<UserRecord> {
           accountStatus: saved.account_status,
           paymentStatus: saved.payment_status,
           feePaid: saved.fee_paid,
-          loginEnabled: saved.login_enabled,
+          loginEnabled: (saved.role === 'customer' || saved.role === 'user') ? (saved.account_status !== 'suspended' && saved.account_status !== 'blocked') : Boolean(saved.account_status === 'active' && saved.fee_paid),
         };
       } else if (error) {
-        console.warn(`[Supabase users upsert notice: ${error.message}]. Retained in resilient store.`);
+        console.error(`[CRITICAL Supabase users upsert error: ${error.message}].`);
+        throw new Error(`Database error saving user: ${error.message}`);
       }
     } catch (e: any) {
-      console.warn(`[Supabase users exception: ${e?.message}]. Retained in resilient store.`);
+      console.error(`[Supabase users exception: ${e?.message}].`, e);
+      throw e;
     }
   }
 
@@ -860,34 +910,30 @@ export async function createUser(user: UserRecord): Promise<UserRecord> {
 export async function updateUser(userId: string, updates: Partial<UserRecord>): Promise<UserRecord> {
   const supabase = getSupabaseClient();
 
-  const dbUpdates: Record<string, any> = {
+  const rawDbUpdates: Record<string, any> = {
     updated_at: new Date().toISOString(),
   };
 
-  if (updates.name !== undefined) dbUpdates.name = updates.name;
-  if (updates.email !== undefined) dbUpdates.email = updates.email;
-  if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
-  if (updates.accountStatus !== undefined) dbUpdates.account_status = updates.accountStatus.toLowerCase();
-  if (updates.paymentStatus !== undefined) dbUpdates.payment_status = updates.paymentStatus.toLowerCase();
-  if (updates.feePaid !== undefined) dbUpdates.fee_paid = updates.feePaid;
-  if (updates.profileStatus !== undefined) dbUpdates.profile_status = updates.profileStatus;
-  if (updates.verificationStatus !== undefined) dbUpdates.verification_status = updates.verificationStatus;
-  if (updates.profilePhoto !== undefined) dbUpdates.profile_photo = updates.profilePhoto;
-  if (updates.paymentReference !== undefined) dbUpdates.payment_reference = updates.paymentReference;
-  if (updates.transactionId !== undefined) dbUpdates.transaction_id = updates.transactionId;
-  if (updates.paymentSubmittedAt !== undefined) dbUpdates.payment_submitted_at = updates.paymentSubmittedAt;
-  if (updates.approvedAt !== undefined) dbUpdates.approved_at = updates.approvedAt;
-  if (updates.approvedBy !== undefined) dbUpdates.approved_by = updates.approvedBy;
-  if (updates.rejectedAt !== undefined) dbUpdates.rejected_at = updates.rejectedAt;
-  if (updates.rejectionReason !== undefined) dbUpdates.rejection_reason = updates.rejectionReason;
-  if (updates.password !== undefined) dbUpdates.password_hash = updates.password;
-  if (updates.mustChangePassword !== undefined) dbUpdates.must_change_password = updates.mustChangePassword;
-  if (updates.temporaryPassword !== undefined) dbUpdates.temporary_password = updates.temporaryPassword;
-  if (updates.passwordExpiresAt !== undefined) dbUpdates.password_expires_at = updates.passwordExpiresAt;
-  if (updates.passwordResetAt !== undefined) dbUpdates.password_reset_at = updates.passwordResetAt;
-  if (updates.passwordResetBy !== undefined) dbUpdates.password_reset_by = updates.passwordResetBy;
+  if (updates.name !== undefined) rawDbUpdates.name = updates.name;
+  if (updates.email !== undefined) rawDbUpdates.email = updates.email;
+  if (updates.phone !== undefined) rawDbUpdates.phone = updates.phone;
+  if (updates.accountStatus !== undefined) rawDbUpdates.account_status = updates.accountStatus.toLowerCase();
+  if (updates.paymentStatus !== undefined) rawDbUpdates.payment_status = updates.paymentStatus.toLowerCase();
+  if (updates.feePaid !== undefined) rawDbUpdates.fee_paid = updates.feePaid;
+  if (updates.profileStatus !== undefined) rawDbUpdates.profile_status = updates.profileStatus;
+  if (updates.verificationStatus !== undefined) rawDbUpdates.verification_status = updates.verificationStatus;
+  if (updates.profilePhoto !== undefined) rawDbUpdates.profile_photo = updates.profilePhoto;
+  if (updates.paymentReference !== undefined) rawDbUpdates.payment_reference = updates.paymentReference;
+  if (updates.paymentSubmittedAt !== undefined) rawDbUpdates.payment_submitted_at = updates.paymentSubmittedAt;
+  if (updates.approvedAt !== undefined) rawDbUpdates.approved_at = updates.approvedAt;
+  if (updates.approvedBy !== undefined) rawDbUpdates.approved_by = updates.approvedBy;
+  if (updates.rejectedAt !== undefined) rawDbUpdates.rejected_at = updates.rejectedAt;
+  if (updates.rejectionReason !== undefined) rawDbUpdates.rejection_reason = updates.rejectionReason;
+  if (updates.password !== undefined) rawDbUpdates.password_hash = updates.password;
 
-  if (supabase) {
+  const dbUpdates = filterKnownUserColumns(rawDbUpdates);
+
+  if (supabase && Object.keys(dbUpdates).length > 0) {
     try {
       if (SUPER_ADMIN_IDENTIFIERS.includes(userId.toLowerCase())) {
         await supabase
