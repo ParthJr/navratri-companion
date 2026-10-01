@@ -286,6 +286,57 @@ export async function fetchUsersFromDb(): Promise<DbUser[]> {
 }
 
 /**
+ * Update user account status (e.g. active, suspended, blocked) in the central database
+ */
+export async function updateUserStatusInDb(
+  userId: string,
+  accountStatus: 'active' | 'suspended' | 'blocked'
+): Promise<{ success: boolean; user?: any; errorMessage?: string }> {
+  try {
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ userId, accountStatus }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true, user: data.user };
+    }
+    return { success: false, errorMessage: data.errorMessage || 'Failed to update user status' };
+  } catch (err: any) {
+    return { success: false, errorMessage: err.message || 'Network error updating user status' };
+  }
+}
+
+/**
+ * Reset Super Admin password in the central persistent database
+ */
+export async function resetSuperAdminPasswordInDb(payload: {
+  identifier?: string;
+  newPassword: string;
+  confirmPassword?: string;
+}): Promise<{ success: boolean; message?: string; errorMessage?: string }> {
+  try {
+    const res = await fetch('/api/admin/reset-password', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true, message: data.message };
+    }
+    return { success: false, errorMessage: data.errorMessage || 'Password reset failed' };
+  } catch (err: any) {
+    return { success: false, errorMessage: err.message || 'Network error during password reset' };
+  }
+}
+
+/**
  * Fetch user profile by userId from central database
  */
 export async function fetchUserProfileFromDb(userId: string): Promise<any | null> {

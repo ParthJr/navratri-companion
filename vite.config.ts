@@ -31,6 +31,7 @@ import paymentsWebhookHandler from './api/payments/webhook.ts';
 import adminTransactionsHandler from './api/admin/transactions.ts';
 import adminWaiveFeeHandler from './api/admin/waive-fee.ts';
 import adminGeneratePasswordHandler from './api/admin/generate-password.ts';
+import adminResetPasswordHandler from './api/admin/reset-password.ts';
 import authChangePasswordHandler from './api/auth/change-password.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +59,7 @@ function apiPlugin(): Plugin {
     if (url === '/api/admin/transactions') return adminTransactionsHandler(req, res);
     if (url === '/api/admin/waive-fee') return adminWaiveFeeHandler(req, res);
     if (url === '/api/admin/generate-password' || url.startsWith('/api/admin/users/') && url.endsWith('/generate-password')) return adminGeneratePasswordHandler(req, res);
+    if (url === '/api/admin/reset-password') return adminResetPasswordHandler(req, res);
     if (url === '/api/payments/submit-registration') return submitPaymentHandler(req, res);
     if (url === '/api/admin/payment-approvals') return paymentApprovalsHandler(req, res);
     if (url === '/api/admin/approve-payment') return approvePaymentHandler(req, res);

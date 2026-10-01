@@ -44,6 +44,7 @@ import {
   fetchUsersFromDb,
   fetchApplicationsFromDb,
   fetchActiveCompanionsFromDb,
+  updateUserStatusInDb,
 } from '../../services/dbService';
 import { Booking, Companion, CompanionPayout, HostApplicant } from '../../types';
 import { COMPANIONS_DATA } from '../../data/companions';
@@ -605,11 +606,27 @@ export const SuperAdminProvider: React.FC<{
         // 1. Process all users from DB
         if (Array.isArray(usersList) && usersList.length > 0) {
           usersList.forEach((u) => {
-            const isApproved = u.feePaid && (u.accountStatus === 'active' || u.paymentStatus === 'approved');
-            const isRejected = u.paymentStatus === 'rejected' || u.accountStatus === 'payment_rejected';
+            const accStatus = (u.accountStatus || '').toLowerCase();
+            const payStatus = (u.paymentStatus || '').toLowerCase();
+            const isCustomer = u.role === 'customer' || u.role === 'user';
+            const isAdmin = u.role === 'owner' || u.role === 'admin';
+
+            let resolvedStatus: 'active' | 'suspended' | 'blocked' = 'suspended';
+            if (accStatus === 'blocked' || payStatus === 'rejected' || accStatus === 'payment_rejected') {
+              resolvedStatus = 'blocked';
+            } else if (accStatus === 'suspended') {
+              resolvedStatus = 'suspended';
+            } else if (accStatus === 'active' || isAdmin || (isCustomer && accStatus !== 'pending_approval')) {
+              resolvedStatus = 'active';
+            } else if (u.feePaid && payStatus === 'approved') {
+              resolvedStatus = 'active';
+            }
+
+            const isApproved = u.feePaid && (accStatus === 'active' || payStatus === 'approved');
+            const isRejected = payStatus === 'rejected' || accStatus === 'payment_rejected';
             const isSubmittedPending =
-              u.accountStatus === 'pending_approval' ||
-              (Boolean(u.paymentSubmittedAt) && u.paymentStatus === 'pending');
+              accStatus === 'pending_approval' ||
+              (Boolean(u.paymentSubmittedAt) && payStatus === 'pending');
             
             dbCustomers.push({
               id: u.userId,
@@ -621,7 +638,7 @@ export const SuperAdminProvider: React.FC<{
               registrationDate: u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Today',
               totalBookings: 0,
               totalSpent: isApproved ? 499 : 0,
-              status: isApproved ? 'active' : isRejected ? 'blocked' : 'suspended',
+              status: resolvedStatus,
               idVerified: Boolean(u.aadhaarImage && u.selfieImage),
               emailVerified: true,
               registrationFeePaid: Boolean(u.feePaid),
@@ -1011,6 +1028,10 @@ export const SuperAdminProvider: React.FC<{
         return c;
       })
     );
+    // Persist status change to central Supabase PostgreSQL database
+    updateUserStatusInDb(id, status).catch((err) => {
+      console.warn('Failed to persist user status to database:', err);
+    });
   };
 
   const addCompanion = (companion: Companion) => {

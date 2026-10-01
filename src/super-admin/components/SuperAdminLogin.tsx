@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
 import { authenticateCredentials, createSessionForAccount } from '../../services/unifiedAuth';
+import { resetSuperAdminPasswordInDb } from '../../services/dbService';
 
 interface SuperAdminLoginProps {
   onExitToCustomerApp?: () => void;
@@ -78,17 +79,13 @@ export const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ onExitToCustom
     }
   };
 
-  const handleForgotLookupAndReset = (e: React.FormEvent) => {
+  const handleForgotLookupAndReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError(null);
-    const user = adminUsers.find(
-      (u) =>
-        u.adminId.toLowerCase() === forgotId.trim().toLowerCase() ||
-        u.email.toLowerCase() === forgotId.trim().toLowerCase()
-    );
 
-    if (!user) {
-      setForgotError('Invalid User ID or Password.');
+    const cleanForgotId = forgotId.trim();
+    if (!cleanForgotId) {
+      setForgotError('Please enter your User ID or Email.');
       return;
     }
 
@@ -97,13 +94,34 @@ export const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ onExitToCustom
       return;
     }
 
-    updateAdminCredentials(user.id, {
-      password: forgotNewPassword.trim(),
-    });
+    try {
+      const res = await resetSuperAdminPasswordInDb({
+        identifier: cleanForgotId,
+        newPassword: forgotNewPassword.trim(),
+      });
 
-    setIdentifier(user.adminId);
-    setPassword(forgotNewPassword.trim());
-    setForgotSuccess(true);
+      if (!res.success) {
+        setForgotError(res.errorMessage || 'Invalid User ID or Password.');
+        return;
+      }
+
+      const user = adminUsers.find(
+        (u) =>
+          u.adminId.toLowerCase() === cleanForgotId.toLowerCase() ||
+          u.email.toLowerCase() === cleanForgotId.toLowerCase()
+      );
+      if (user) {
+        updateAdminCredentials(user.id, {
+          password: forgotNewPassword.trim(),
+        });
+      }
+
+      setIdentifier(cleanForgotId);
+      setPassword(forgotNewPassword.trim());
+      setForgotSuccess(true);
+    } catch (err: any) {
+      setForgotError(err.message || 'Failed to update password. Please try again.');
+    }
   };
 
   return (

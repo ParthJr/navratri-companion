@@ -61,7 +61,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
   const [waiveReason, setWaiveReason] = useState('Super Admin promotional waiver');
 
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'customer' | 'companion'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'customer' | 'companion' | 'admin'>('all');
   const [cityFilter, setCityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [emailFilter, setEmailFilter] = useState<'all' | 'verified' | 'not_verified'>('all');
@@ -115,7 +115,8 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
     const matchesRole =
       roleFilter === 'all' ||
       (roleFilter === 'customer' && (userRole === 'customer' || userRole === 'user')) ||
-      (roleFilter === 'companion' && userRole === 'companion');
+      (roleFilter === 'companion' && userRole === 'companion') ||
+      (roleFilter === 'admin' && (userRole === 'owner' || userRole === 'admin'));
 
     const matchesCity = cityFilter === 'all' || c.city === cityFilter;
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
@@ -260,6 +261,7 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
             <option value="all">All Roles</option>
             <option value="customer">Customer (Booker)</option>
             <option value="companion">Companion (Host)</option>
+            <option value="admin">Super Admin / Admin</option>
           </select>
 
           {/* Email verification filter */}
@@ -338,7 +340,11 @@ export const UsersTab: React.FC<UsersTabProps> = ({ onExitToCustomerApp }) => {
 
                     {/* Role Badge */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      {cust.role === 'companion' ? (
+                      {cust.role === 'owner' || cust.role === 'admin' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                          <ShieldCheck className="w-3 h-3 text-purple-400" /> Super Admin
+                        </span>
+                      ) : cust.role === 'companion' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#fd8a42]/10 text-[#fd8a42] border border-[#fd8a42]/30">
                           Companion
                         </span>

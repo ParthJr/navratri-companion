@@ -37,6 +37,7 @@ import paymentsWebhookHandler from './api/payments/webhook.ts';
 import adminTransactionsHandler from './api/admin/transactions.ts';
 import adminWaiveFeeHandler from './api/admin/waive-fee.ts';
 import adminGeneratePasswordHandler from './api/admin/generate-password.ts';
+import adminResetPasswordHandler from './api/admin/reset-password.ts';
 import authChangePasswordHandler from './api/auth/change-password.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,6 +104,7 @@ app.all('/api/admin/users', adapt(adminUsersHandler));
 app.all('/api/admin/transactions', adapt(adminTransactionsHandler));
 app.all('/api/admin/waive-fee', adapt(adminWaiveFeeHandler));
 app.all('/api/admin/generate-password', adapt(adminGeneratePasswordHandler));
+app.all('/api/admin/reset-password', adapt(adminResetPasswordHandler));
 app.all('/api/admin/users/generate-password', adapt(adminGeneratePasswordHandler));
 app.all('/api/admin/users/:userId/generate-password', adapt(adminGeneratePasswordHandler));
 app.all('/api/auth/login', adapt(authLoginHandler));

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
 import { AdminUser, AdminRole, ROLE_PERMISSIONS } from '../types';
+import { resetSuperAdminPasswordInDb } from '../../services/dbService';
 
 export const AdminUsersTab: React.FC = () => {
   const {
@@ -72,9 +73,15 @@ export const AdminUsersTab: React.FC = () => {
     setShowEditPass(false);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
+    if (editPassword.trim()) {
+      await resetSuperAdminPasswordInDb({
+        identifier: editAdminId.trim() || editingUser.adminId,
+        newPassword: editPassword.trim(),
+      }).catch((err) => console.warn('resetSuperAdminPasswordInDb notice:', err));
+    }
     updateAdminCredentials(editingUser.id, {
       adminId: editAdminId.trim(),
       password: editPassword.trim(),

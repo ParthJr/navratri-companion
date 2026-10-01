@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import pg from 'pg';
+import { hashPassword } from './auth/_authUtils.ts';
 
 export interface UserRecord {
   id: string;
@@ -453,8 +454,139 @@ function persistStore() {
 }
 
 // ============================================================================
-// USERS CRUD
+// USERS CRUD & SUPER ADMIN MANAGEMENT
 // ============================================================================
+
+export const SUPER_ADMIN_IDENTIFIERS = [
+  'superadmin',
+  'parthjunior23',
+  'admin',
+  'owner',
+  'owner_admin',
+  'owner@navratricompanion.com',
+  'admin@navratricompanion.com',
+];
+
+export async function getSuperAdminUser(): Promise<UserRecord> {
+  const supabase = getSupabaseClient();
+  const canonicalUserId = 'superadmin';
+  const canonicalEmail = 'owner@navratricompanion.com';
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .or(`user_id.eq.superadmin,user_id.eq.parthjunior23,user_id.eq.admin,user_id.eq.owner,email.eq.${canonicalEmail}`)
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        const row = data[0];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          name: row.name || 'Master Platform Administrator',
+          email: row.email || canonicalEmail,
+          phone: row.phone || '+91 99000 00000',
+          mobile: row.phone || '+91 99000 00000',
+          password: row.password_hash,
+          role: 'owner',
+          city: row.city || 'Ahmedabad',
+          accountStatus: 'active',
+          paymentStatus: 'approved',
+          feePaid: true,
+          profileStatus: row.profile_status || 'approved',
+          verificationStatus: row.verification_status || 'verified',
+          loginEnabled: true,
+          profilePhoto: row.profile_photo || '',
+          mustChangePassword: Boolean(row.must_change_password),
+          temporaryPassword: Boolean(row.temporary_password),
+          passwordExpiresAt: row.password_expires_at,
+          passwordResetAt: row.password_reset_at,
+          passwordResetBy: row.password_reset_by,
+          createdAt: row.created_at || new Date().toISOString(),
+          updatedAt: row.updated_at || new Date().toISOString(),
+        };
+      }
+
+      // If not present in Supabase yet, seed it immediately with default password
+      const initialPassword = process.env.MASTER_ADMIN_PASSWORD || '##Parth2324';
+      const initialHashed = hashPassword(initialPassword);
+      const newAdminRow = {
+        user_id: canonicalUserId,
+        name: 'Master Platform Administrator',
+        email: canonicalEmail,
+        phone: '+91 99000 00000',
+        password_hash: initialHashed,
+        role: 'owner',
+        city: 'Ahmedabad',
+        account_status: 'active',
+        payment_status: 'approved',
+        fee_paid: true,
+        login_enabled: true,
+        profile_status: 'approved',
+        verification_status: 'verified',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from('users')
+        .insert(newAdminRow)
+        .select('*')
+        .single();
+
+      if (!insertErr && inserted) {
+        return {
+          id: inserted.id,
+          userId: inserted.user_id,
+          name: inserted.name,
+          email: inserted.email,
+          phone: inserted.phone,
+          mobile: inserted.phone,
+          password: inserted.password_hash,
+          role: 'owner',
+          city: inserted.city,
+          accountStatus: 'active',
+          paymentStatus: 'approved',
+          feePaid: true,
+          profileStatus: 'approved',
+          verificationStatus: 'verified',
+          loginEnabled: true,
+          profilePhoto: inserted.profile_photo || '',
+          createdAt: inserted.created_at,
+          updatedAt: inserted.updated_at,
+        };
+      }
+    } catch (e: any) {
+      console.warn('Supabase getSuperAdminUser error:', e?.message);
+    }
+  }
+
+  // Resilient memory fallback if Supabase is temporarily unreachable
+  if (!storeMemory.users['superadmin']) {
+    const initialHashed = hashPassword(process.env.MASTER_ADMIN_PASSWORD || '##Parth2324');
+    storeMemory.users['superadmin'] = {
+      id: 'adm_superadmin_01',
+      userId: 'superadmin',
+      name: 'Master Platform Administrator',
+      email: canonicalEmail,
+      phone: '+91 99000 00000',
+      password: initialHashed,
+      role: 'owner',
+      city: 'Ahmedabad',
+      accountStatus: 'active',
+      paymentStatus: 'approved',
+      feePaid: true,
+      profileStatus: 'approved',
+      verificationStatus: 'verified',
+      loginEnabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  return storeMemory.users['superadmin'];
+}
 
 export async function getAllUsers(): Promise<UserRecord[]> {
   const supabase = getSupabaseClient();
@@ -531,6 +663,16 @@ export async function getAllUsers(): Promise<UserRecord[]> {
     }
   }
 
+  // Ensure Super Admin user is included in the unified database user list
+  try {
+    const adminUser = await getSuperAdminUser();
+    if (adminUser && !combined.has(adminUser.userId.toLowerCase())) {
+      combined.set(adminUser.userId.toLowerCase(), adminUser);
+    }
+  } catch (adminErr: any) {
+    console.warn('Super Admin fetch notice in getAllUsers:', adminErr?.message);
+  }
+
   return Array.from(combined.values()).sort(
     (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );
@@ -540,6 +682,10 @@ export async function getUserByIdentifier(identifier: string): Promise<UserRecor
   if (!identifier) return null;
   const clean = identifier.trim().toLowerCase();
   const cleanPhone = clean.replace(/[^0-9]/g, '');
+
+  if (SUPER_ADMIN_IDENTIFIERS.includes(clean)) {
+    return await getSuperAdminUser();
+  }
 
   const supabase = getSupabaseClient();
 
@@ -743,10 +889,17 @@ export async function updateUser(userId: string, updates: Partial<UserRecord>): 
 
   if (supabase) {
     try {
-      await supabase
-        .from('users')
-        .update(dbUpdates)
-        .eq('user_id', userId);
+      if (SUPER_ADMIN_IDENTIFIERS.includes(userId.toLowerCase())) {
+        await supabase
+          .from('users')
+          .update(dbUpdates)
+          .or(`user_id.eq.${userId},user_id.eq.superadmin,user_id.eq.parthjunior23,email.eq.owner@navratricompanion.com`);
+      } else {
+        await supabase
+          .from('users')
+          .update(dbUpdates)
+          .eq('user_id', userId);
+      }
     } catch (e: any) {
       console.warn(`[Supabase updateUser Warning] ${e?.message}`);
     }
@@ -766,7 +919,8 @@ export async function updateUser(userId: string, updates: Partial<UserRecord>): 
       paymentStatus: 'pending',
       feePaid: false,
       profileStatus: 'created',
-      verificationStatus: 'unverified',
+      verificationStatus: 'id_submitted',
+      loginEnabled: false,
       createdAt: new Date().toISOString(),
     }),
     ...updates,
@@ -774,6 +928,9 @@ export async function updateUser(userId: string, updates: Partial<UserRecord>): 
   };
 
   storeMemory.users[userId.toLowerCase()] = updatedUser;
+  if (SUPER_ADMIN_IDENTIFIERS.includes(userId.toLowerCase())) {
+    storeMemory.users['superadmin'] = updatedUser;
+  }
   persistStore();
 
   return updatedUser;
@@ -1594,6 +1751,8 @@ export async function getPaymentAuditLogs(): Promise<PaymentAuditLogRecord[]> {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
+
+export const logPaymentAudit = logPaymentAuditRecord;
 
 // ============================================================================
 // APPLICATIONS CRUD

@@ -1,5 +1,5 @@
 import { generateSessionToken, parseRequestBody, verifyPassword, setSessionCookie } from './_authUtils.ts';
-import { getUserByIdentifier, updateUser } from '../_db.ts';
+import { getUserByIdentifier, updateUser, getSuperAdminUser, SUPER_ADMIN_IDENTIFIERS } from '../_db.ts';
 
 export default async function handler(req: any, res: any) {
   // Set security and CORS headers
@@ -28,55 +28,41 @@ export default async function handler(req: any, res: any) {
 
     const cleanIdentifierLower = rawIdentifier.toLowerCase();
 
-    // 1. Read Server-Side Environment Variables for Master Admin
-    const masterAdminUserId = (
-      process.env.MASTER_ADMIN_USER_ID ||
-      process.env.VITE_PLATFORM_OWNER_ID ||
-      'parthjunior23'
-    ).trim();
-
-    const masterAdminEmail = (
-      process.env.MASTER_ADMIN_EMAIL ||
-      'owner@navratricompanion.com'
-    ).trim();
-
-    const rawMasterPassword = (process.env.MASTER_ADMIN_PASSWORD || '##Parth2324').trim();
-    // Strip surrounding quotes if configured with quotes in .env or deployment secrets
-    const masterAdminPassword = rawMasterPassword.replace(/^["']|["']$/g, '').trim();
-
-    // Check identifier against Master Admin User ID, Email, or standard aliases
-    const isMasterAdminId =
-      cleanIdentifierLower === masterAdminUserId.toLowerCase() ||
-      cleanIdentifierLower === masterAdminEmail.toLowerCase() ||
-      cleanIdentifierLower === 'parthjunior23' ||
-      cleanIdentifierLower === 'admin@navratricompanion.com' ||
-      cleanIdentifierLower === 'owner@navratricompanion.com' ||
-      cleanIdentifierLower === 'owner_admin' ||
-      cleanIdentifierLower === 'owner' ||
-      cleanIdentifierLower === 'superadmin' ||
-      cleanIdentifierLower === 'admin';
+    // 1. Production Database Authentication for Super Admin / Platform Owner
+    const isMasterAdminId = SUPER_ADMIN_IDENTIFIERS.includes(cleanIdentifierLower);
 
     if (isMasterAdminId) {
-      const isPasswordMatch =
-        rawPassword === masterAdminPassword ||
-        rawPassword === rawMasterPassword ||
-        rawPassword === '##Parth2324' ||
-        rawPassword === 'Parth2324' ||
-        rawPassword === 'parth2324' ||
-        rawPassword === 'Admin@123' ||
-        rawPassword === 'Admin1234!';
+      let adminRecord;
+      try {
+        adminRecord = await getSuperAdminUser();
+      } catch (adminErr: any) {
+        console.error('Error fetching Super Admin record from DB:', adminErr);
+      }
+
+      if (!adminRecord) {
+        res.statusCode = 503;
+        return res.end(
+          JSON.stringify({
+            success: false,
+            errorMessage: 'Authentication service temporarily unavailable. Please try again.',
+          })
+        );
+      }
+
+      const isPasswordMatch = verifyPassword(rawPassword, adminRecord.password || '');
 
       if (isPasswordMatch) {
         const account = {
-          id: 'adm-master-owner',
-          userId: masterAdminUserId,
-          name: 'Master Platform Administrator',
-          email: masterAdminEmail,
-          phone: '+91 99000 00000',
+          id: adminRecord.id || 'adm-master-owner',
+          userId: adminRecord.userId || 'superadmin',
+          name: adminRecord.name || 'Master Platform Administrator',
+          email: adminRecord.email || 'owner@navratricompanion.com',
+          phone: adminRecord.phone || '+91 99000 00000',
           role: 'owner' as const,
           adminRole: 'super_admin' as const,
           status: 'active' as const,
           avatarUrl:
+            adminRecord.profilePhoto ||
             'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
         };
 
