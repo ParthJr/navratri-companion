@@ -27,6 +27,7 @@ import {
 } from '../../services/dbService';
 import {
   generateCustomerPaymentWhatsAppUrl,
+  generateCompanionRegistrationWhatsAppUrl,
   generatePaymentSupportWhatsAppUrl,
   cleanWhatsAppNumber,
 } from '../../utils/whatsapp';
@@ -480,7 +481,8 @@ export const PaymentApprovalsTab: React.FC = () => {
                         bp.customerPhone,
                         bp.customerName,
                         bp.totalPrice,
-                        bp.bookingReference || bp.bookingId
+                        bp.bookingReference || bp.bookingId,
+                        bp.companionName
                       );
 
                       return (
@@ -763,9 +765,7 @@ export const PaymentApprovalsTab: React.FC = () => {
 
                           {/* WhatsApp Button */}
                           <a
-                            href={`https://wa.me/${cleanWhatsAppNumber(req.phone)}?text=${encodeURIComponent(
-                              `Hello ${req.name}, regarding your ₹499 companion registration for Navratri Companion (@${req.userId}).`
-                            )}`}
+                            href={generateCompanionRegistrationWhatsAppUrl(req.phone, req.name)}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700/30 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-semibold transition-all cursor-pointer"

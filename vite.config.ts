@@ -12,6 +12,7 @@ import submitPaymentHandler from './api/payments/submit-registration.ts';
 import paymentApprovalsHandler from './api/admin/payment-approvals.ts';
 import approvePaymentHandler from './api/admin/approve-payment.ts';
 import rejectPaymentHandler from './api/admin/reject-payment.ts';
+import bookingPaymentsHandler from './api/admin/booking-payments.ts';
 import usersHandler from './api/admin/users.ts';
 import profileHandler from './api/users/profile.ts';
 import uploadHandler, { serveUpload } from './api/upload.ts';
@@ -64,6 +65,7 @@ function apiPlugin(): Plugin {
     if (url === '/api/admin/payment-approvals') return paymentApprovalsHandler(req, res);
     if (url === '/api/admin/approve-payment') return approvePaymentHandler(req, res);
     if (url === '/api/admin/reject-payment') return rejectPaymentHandler(req, res);
+    if (url === '/api/admin/booking-payments') return bookingPaymentsHandler(req, res);
     if (url === '/api/admin/users') return usersHandler(req, res);
     if (url === '/api/admin/applications') return applicationsHandler(req, res);
     if (url === '/api/admin/approve-application') return approveApplicationHandler(req, res);

@@ -103,7 +103,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setTimeout(() => setEmailResentToast(false), 4000);
   };
 
-  const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
+  const confirmedBookings = bookings.filter((b) => b.status === 'confirmed' && (b.paymentStatus === 'CONFIRMED' || b.paymentStatus === 'PAID'));
   const activeUpcomingBooking = confirmedBookings[0] || bookings[0];
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
 
@@ -337,7 +337,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     ) : (activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION') ? (
                       <div className="absolute top-0 right-0 bg-amber-500 text-white px-4 py-1 rounded-bl-xl text-xs font-semibold flex items-center gap-1 shadow-xs animate-pulse">
                         <Clock className="w-3.5 h-3.5" />
-                        <span>Payment Submitted — Verification Pending</span>
+                        <span>Payment Submitted — Waiting for Confirmation</span>
                       </div>
                     ) : (
                       <div className="absolute top-0 right-0 bg-emerald-600 text-white px-4 py-1 rounded-bl-xl text-xs font-semibold flex items-center gap-1 shadow-xs">
@@ -359,7 +359,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <div className="flex flex-col flex-grow gap-3 w-full">
                         <div>
                           <span className="text-[11px] text-[#596579] uppercase tracking-wider font-semibold block">
-                            Upcoming Experience
+                            {(activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION')
+                              ? 'Payment Pending — Waiting for Confirmation'
+                              : activeUpcomingBooking.paymentStatus === 'REJECTED' || activeUpcomingBooking.status === 'cancelled'
+                              ? 'Cancelled Experience'
+                              : 'Upcoming Experience'}
                           </span>
                           <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-lg sm:text-xl text-[#12001f]">
                             Garba + Photos ({activeUpcomingBooking.duration}) with {activeUpcomingBooking.companionName} ({activeUpcomingBooking.companionAge})
@@ -385,7 +389,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             {activeUpcomingBooking.paymentStatus === 'REJECTED' ? (
                               <span className="text-rose-600 font-semibold">Payment Rejected</span>
                             ) : (activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION') ? (
-                              <span className="text-amber-600 font-semibold">Verification Pending</span>
+                              <span className="text-amber-600 font-semibold">Payment Pending</span>
                             ) : (
                               <span className="text-emerald-700 font-semibold">₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} locked in escrow</span>
                             )}

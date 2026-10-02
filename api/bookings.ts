@@ -123,7 +123,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const numBase = Number(basePrice) || 1200;
-      const numFee = Number(platformFee) || 50;
+      const numFee = Number(platformFee) || 70;
       const total = numBase + numFee;
       const randomSuffix = Math.floor(1000 + Math.random() * 9000);
       const bookingRef = `NC-2026-${randomSuffix}`;
@@ -152,8 +152,8 @@ export default async function handler(req: any, res: any) {
         platformFee: numFee,
         totalPrice: total,
         companionEarnings: numBase,
-        status: 'PENDING_PAYMENT_VERIFICATION',
-        paymentStatus: 'PENDING',
+        status: 'pending',
+        paymentStatus: 'PENDING_CONFIRMATION',
         paymentReference: paymentReference || `UPI-${bookingRef}`,
         escrowStatus: 'Held in Escrow',
         completionOtp: completionOtp,

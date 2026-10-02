@@ -45,6 +45,7 @@ import {
   fetchApplicationsFromDb,
   fetchActiveCompanionsFromDb,
   updateUserStatusInDb,
+  fetchBookingsFromDb,
 } from '../../services/dbService';
 import { Booking, Companion, CompanionPayout, HostApplicant } from '../../types';
 import { COMPANIONS_DATA } from '../../data/companions';
@@ -590,15 +591,52 @@ export const SuperAdminProvider: React.FC<{
   useEffect(() => {
     const syncDbData = async () => {
       try {
-        const [approvalsRes, usersList, appsRes] = await Promise.all([
+        const [approvalsRes, usersList, appsRes, dbBookingsList] = await Promise.all([
           fetchPaymentApprovalsFromDb().catch(() => ({ success: false, requests: [], pendingCount: 0 })),
           fetchUsersFromDb().catch(() => []),
           fetchApplicationsFromDb().catch(() => ({ success: false, applications: [], pendingCount: 0 })),
+          fetchBookingsFromDb().catch(() => []),
         ]);
 
         // Sync host applications from central database
         if (appsRes.success && Array.isArray(appsRes.applications)) {
           setApplicants(appsRes.applications);
+        }
+
+        // Sync bookings from central database
+        if (Array.isArray(dbBookingsList) && dbBookingsList.length > 0) {
+          const mappedBookings: Booking[] = dbBookingsList.map((b: any) => ({
+            id: b.id,
+            companionId: b.companionId,
+            companionName: b.companionName,
+            companionAge: b.companionAge || 22,
+            companionCity: b.companionCity || b.city || 'Ahmedabad',
+            companionAvatar: b.companionAvatar || '',
+            companionPhone: b.companionPhone || '',
+            companionUpi: b.companionUpi,
+            guestName: b.customerName || 'Verified Guest',
+            guestPhone: b.customerPhone || '',
+            date: b.date,
+            rawDate: b.rawDate || b.date,
+            timeSlot: b.timeSlot,
+            duration: b.durationPackage === '4 Hours' ? '4 Hours' : '2 Hours',
+            venue: b.venue,
+            baseFee: b.basePrice,
+            platformFee: b.platformFee,
+            totalFee: b.totalPrice,
+            status: b.status,
+            escrowStatus: b.escrowStatus,
+            paymentStatus: b.paymentStatus,
+            paymentReference: b.paymentReference,
+            checkedIn: Boolean(b.checkInAt),
+            sessionStarted: Boolean(b.checkInAt),
+            completionOtp: b.completionOtp,
+            completionOtpVerified: Boolean(b.otpVerified),
+            completedAt: b.completedAt,
+            payoutStatus: b.payoutStatus || 'escrow_held',
+            bookedAt: b.createdAt,
+          }));
+          setBookings(mappedBookings);
         }
 
         const dbCustomers: CustomerUser[] = [];

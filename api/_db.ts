@@ -2309,46 +2309,51 @@ export async function getAllBookings(filter?: { customerId?: string; companionId
   if (supabase) {
     try {
       let query = supabase.from('bookings').select('*').order('created_at', { ascending: false });
-      if (filter?.customerId) query = query.eq('customer_id', filter.customerId);
+      if (filter?.customerId) query = query.eq('user_id', filter.customerId);
       if (filter?.companionId) query = query.eq('companion_id', filter.companionId);
 
       const { data, error } = await query;
       if (!error && data) {
-        dbBookings = data.map((row: any) => ({
-          id: row.id,
-          bookingReference: row.booking_reference,
-          customerId: row.customer_id,
-          customerName: row.customer_name,
-          customerPhone: row.customer_phone,
-          companionId: row.companion_id,
-          companionName: row.companion_name,
-          companionPhone: row.companion_phone,
-          companionUpi: row.companion_upi,
-          companionAge: row.companion_age,
-          companionCity: row.companion_city,
-          companionAvatar: row.companion_avatar,
-          date: row.date,
-          rawDate: row.raw_date || row.date,
-          timeSlot: row.time_slot,
-          durationPackage: row.duration_package,
-          venue: row.venue,
-          city: row.city || 'Ahmedabad',
-          basePrice: Number(row.base_price) || 0,
-          platformFee: Number(row.platform_fee) || 50,
-          totalPrice: Number(row.total_price) || 0,
-          companionEarnings: Number(row.companion_earnings) || 0,
-          status: row.status,
-          paymentStatus: row.payment_status,
-          paymentReference: row.payment_reference,
-          escrowStatus: row.escrow_status || 'Held in Escrow',
-          completionOtp: row.completion_otp,
-          otpVerified: Boolean(row.otp_verified),
-          checkInAt: row.check_in_at,
-          completedAt: row.completed_at,
-          payoutStatus: row.payout_status,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        }));
+        dbBookings = data.map((row: any) => {
+          const meta = row.metadata || {};
+          const rowStatus = row.status || 'pending';
+          const pStatus = meta.paymentStatus || (rowStatus === 'confirmed' ? 'CONFIRMED' : 'PENDING_CONFIRMATION');
+          return {
+            id: row.id,
+            bookingReference: row.booking_code || meta.bookingReference || `NC-2026-${row.id.slice(-4)}`,
+            customerId: row.user_id || meta.customerId,
+            customerName: meta.customerName || 'Verified Guest',
+            customerPhone: meta.customerPhone || '',
+            companionId: row.companion_id || meta.companionId,
+            companionName: meta.companionName || 'Companion',
+            companionPhone: meta.companionPhone || '',
+            companionUpi: meta.companionUpi || '',
+            companionAge: meta.companionAge ? Number(meta.companionAge) : 22,
+            companionCity: meta.companionCity || row.venue_address || 'Ahmedabad',
+            companionAvatar: meta.companionAvatar || '',
+            date: meta.date || row.event_date,
+            rawDate: meta.rawDate || row.event_date,
+            timeSlot: meta.timeSlot || '7:00 PM – 11:00 PM',
+            durationPackage: meta.durationPackage || `${row.duration_hours || 2} Hours`,
+            venue: row.venue_name || meta.venue || 'Festival Venue',
+            city: meta.city || row.venue_address || 'Ahmedabad',
+            basePrice: meta.basePrice || (Number(row.total_price || 0) - Number(row.platform_fee || 70)),
+            platformFee: Number(row.platform_fee) || 70,
+            totalPrice: Number(row.total_price) || 1270,
+            companionEarnings: meta.companionEarnings || (Number(row.total_price || 0) - Number(row.platform_fee || 70)),
+            status: rowStatus,
+            paymentStatus: pStatus,
+            paymentReference: row.payment_reference || meta.paymentReference || '',
+            escrowStatus: meta.escrowStatus || (rowStatus === 'confirmed' ? 'LOCKED' : 'Held in Escrow'),
+            completionOtp: row.completion_otp || meta.completionOtp,
+            otpVerified: meta.otpVerified ?? false,
+            checkInAt: meta.checkInAt,
+            completedAt: meta.completedAt,
+            payoutStatus: meta.payoutStatus || 'escrow_held',
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+          };
+        });
       }
     } catch (e: any) {
       console.warn('Supabase getAllBookings warning:', e?.message);
@@ -2374,39 +2379,53 @@ export async function getAllBookings(filter?: { customerId?: string; companionId
 
 export async function createBookingRecord(booking: BookingRecord): Promise<BookingRecord> {
   const supabase = getSupabaseClient();
+  const now = new Date().toISOString();
 
   const insertPayload = {
     id: booking.id,
-    booking_reference: booking.bookingReference,
-    customer_id: booking.customerId,
-    customer_name: booking.customerName,
-    customer_phone: booking.customerPhone || null,
+    user_id: booking.customerId,
     companion_id: booking.companionId,
-    companion_name: booking.companionName,
-    companion_phone: booking.companionPhone || null,
-    companion_upi: booking.companionUpi || null,
-    companion_age: booking.companionAge || 22,
-    companion_city: booking.companionCity || booking.city,
-    companion_avatar: booking.companionAvatar || null,
-    date: booking.date,
-    raw_date: booking.rawDate || booking.date,
-    time_slot: booking.timeSlot,
-    duration_package: booking.durationPackage,
-    venue: booking.venue,
-    city: booking.city || 'Ahmedabad',
-    base_price: booking.basePrice,
-    platform_fee: booking.platformFee,
+    event_date: booking.rawDate || booking.date,
+    duration_hours: booking.durationPackage === '4 Hours' ? 4 : 2,
     total_price: booking.totalPrice,
-    companion_earnings: booking.companionEarnings,
-    status: booking.status,
-    payment_status: booking.paymentStatus,
-    payment_reference: booking.paymentReference || null,
-    escrow_status: booking.escrowStatus || 'Held in Escrow',
+    advance_paid: booking.totalPrice,
+    remaining_payout: 0,
+    platform_fee: booking.platformFee,
+    venue_name: booking.venue,
+    venue_address: booking.city || 'Ahmedabad',
+    status: booking.status === 'confirmed' ? 'confirmed' : 'pending',
+    booking_code: booking.bookingReference,
     completion_otp: booking.completionOtp || null,
-    otp_verified: booking.otpVerified ?? false,
-    payout_status: booking.payoutStatus || 'escrow_held',
-    created_at: booking.createdAt || new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    payment_reference: booking.paymentReference || null,
+    created_at: booking.createdAt || now,
+    updated_at: now,
+    metadata: {
+      bookingReference: booking.bookingReference,
+      customerId: booking.customerId,
+      customerName: booking.customerName,
+      customerPhone: booking.customerPhone || '',
+      companionId: booking.companionId,
+      companionName: booking.companionName,
+      companionPhone: booking.companionPhone || '',
+      companionUpi: booking.companionUpi || '',
+      companionAge: booking.companionAge || 22,
+      companionCity: booking.companionCity || booking.city,
+      companionAvatar: booking.companionAvatar || '',
+      date: booking.date,
+      rawDate: booking.rawDate || booking.date,
+      timeSlot: booking.timeSlot,
+      durationPackage: booking.durationPackage,
+      venue: booking.venue,
+      city: booking.city || 'Ahmedabad',
+      basePrice: booking.basePrice,
+      platformFee: booking.platformFee,
+      totalPrice: booking.totalPrice,
+      companionEarnings: booking.companionEarnings,
+      status: booking.status,
+      paymentStatus: booking.paymentStatus || 'PENDING_CONFIRMATION',
+      escrowStatus: booking.escrowStatus || 'Held in Escrow',
+      payoutStatus: booking.payoutStatus || 'escrow_held',
+    },
   };
 
   if (supabase) {
@@ -2433,17 +2452,96 @@ export async function updateBookingRecord(
   updates: Partial<BookingRecord>
 ): Promise<BookingRecord> {
   const supabase = getSupabaseClient();
+  const now = new Date().toISOString();
+
+  let existing = storeMemory.bookings[bookingId];
+  if (!existing && supabase) {
+    try {
+      const { data } = await supabase.from('bookings').select('*').eq('id', bookingId).single();
+      if (data) {
+        const meta = data.metadata || {};
+        existing = {
+          id: data.id,
+          bookingReference: data.booking_code || meta.bookingReference || `NC-2026-${data.id.slice(-4)}`,
+          customerId: data.user_id || meta.customerId,
+          customerName: meta.customerName || 'Verified Guest',
+          customerPhone: meta.customerPhone || '',
+          companionId: data.companion_id || meta.companionId,
+          companionName: meta.companionName || 'Companion',
+          companionPhone: meta.companionPhone || '',
+          companionUpi: meta.companionUpi || '',
+          companionAge: meta.companionAge ? Number(meta.companionAge) : 22,
+          companionCity: meta.companionCity || data.venue_address || 'Ahmedabad',
+          companionAvatar: meta.companionAvatar || '',
+          date: meta.date || data.event_date,
+          rawDate: meta.rawDate || data.event_date,
+          timeSlot: meta.timeSlot || '7:00 PM – 11:00 PM',
+          durationPackage: meta.durationPackage || `${data.duration_hours || 2} Hours`,
+          venue: data.venue_name || meta.venue || 'Festival Venue',
+          city: meta.city || data.venue_address || 'Ahmedabad',
+          basePrice: meta.basePrice || (Number(data.total_price || 0) - Number(data.platform_fee || 70)),
+          platformFee: Number(data.platform_fee) || 70,
+          totalPrice: Number(data.total_price) || 1270,
+          companionEarnings: meta.companionEarnings || (Number(data.total_price || 0) - Number(data.platform_fee || 70)),
+          status: data.status,
+          paymentStatus: meta.paymentStatus || (data.status === 'confirmed' ? 'CONFIRMED' : 'PENDING_CONFIRMATION'),
+          paymentReference: data.payment_reference || meta.paymentReference || '',
+          escrowStatus: meta.escrowStatus || (data.status === 'confirmed' ? 'LOCKED' : 'Held in Escrow'),
+          completionOtp: data.completion_otp || meta.completionOtp,
+          otpVerified: meta.otpVerified ?? false,
+          payoutStatus: meta.payoutStatus || 'escrow_held',
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        };
+      }
+    } catch (e: any) {
+      // Ignore
+    }
+  }
+
+  const updated: BookingRecord = {
+    ...(existing || {
+      id: bookingId,
+      bookingReference: `NC-2026-${Date.now().toString().slice(-4)}`,
+      customerId: '',
+      customerName: 'Customer',
+      companionId: '',
+      companionName: 'Companion',
+      date: now,
+      rawDate: now,
+      timeSlot: 'Evening',
+      durationPackage: '2 Hours',
+      venue: 'Venue',
+      city: 'Ahmedabad',
+      basePrice: 1200,
+      platformFee: 70,
+      totalPrice: 1270,
+      companionEarnings: 1200,
+      status: 'pending',
+      paymentStatus: 'PENDING_CONFIRMATION',
+      escrowStatus: 'Held in Escrow',
+      createdAt: now,
+    }),
+    ...updates,
+    updatedAt: now,
+  };
 
   const dbUpdates: Record<string, any> = {
-    updated_at: new Date().toISOString(),
+    updated_at: now,
   };
 
   if (updates.status !== undefined) dbUpdates.status = updates.status;
-  if (updates.paymentStatus !== undefined) dbUpdates.payment_status = updates.paymentStatus;
-  if (updates.escrowStatus !== undefined) dbUpdates.escrow_status = updates.escrowStatus;
-  if (updates.otpVerified !== undefined) dbUpdates.otp_verified = updates.otpVerified;
-  if (updates.completedAt !== undefined) dbUpdates.completed_at = updates.completedAt;
-  if (updates.payoutStatus !== undefined) dbUpdates.payout_status = updates.payoutStatus;
+  if (updates.completionOtp !== undefined) dbUpdates.completion_otp = updates.completionOtp;
+  if (updates.paymentReference !== undefined) dbUpdates.payment_reference = updates.paymentReference;
+
+  // Preserve and merge metadata
+  const existingMeta = (existing as any)?.metadata || {};
+  dbUpdates.metadata = {
+    ...existingMeta,
+    ...existing,
+    ...updates,
+    updatedAt: now,
+  };
 
   if (supabase) {
     try {
@@ -2455,34 +2553,6 @@ export async function updateBookingRecord(
       console.warn(`[Supabase updateBookingRecord Warning] ${e?.message}`);
     }
   }
-
-  const existing = storeMemory.bookings[bookingId];
-  const updated: BookingRecord = {
-    ...(existing || {
-      id: bookingId,
-      bookingReference: `BK-${Date.now()}`,
-      customerId: '',
-      customerName: 'Customer',
-      companionId: '',
-      companionName: 'Companion',
-      date: new Date().toISOString(),
-      rawDate: new Date().toISOString(),
-      timeSlot: 'Evening',
-      durationPackage: 'Single Day',
-      venue: 'Venue',
-      city: 'Ahmedabad',
-      basePrice: 0,
-      platformFee: 50,
-      totalPrice: 50,
-      companionEarnings: 0,
-      status: 'confirmed',
-      paymentStatus: 'paid',
-      escrowStatus: 'Held in Escrow',
-      createdAt: new Date().toISOString(),
-    }),
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
 
   storeMemory.bookings[bookingId] = updated;
   persistStore();

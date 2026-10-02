@@ -214,12 +214,14 @@ export function generateCustomerPaymentWhatsAppUrl(
   customerPhone?: string,
   customerName?: string,
   amount: number = 1270,
-  bookingId?: string
+  bookingId?: string,
+  companionName?: string
 ): string {
   const targetNumber = cleanWhatsAppNumber(customerPhone);
   const name = customerName ? customerName.trim() : 'Customer';
-  const idText = bookingId ? ` for Booking ID #${bookingId}` : '';
-  const message = `Hello ${name}, regarding your Navratri Companion booking${idText} (Amount: ₹${amount.toLocaleString('en-IN')}). Your booking payment has been submitted for platform confirmation.`;
+  const compPart = companionName ? ` for ${companionName}` : '';
+  const idPart = bookingId ? ` Booking ID: ${bookingId}.` : '';
+  const message = `Hello ${name}, your booking payment of ₹${amount.toLocaleString('en-IN')}${compPart} is currently awaiting platform confirmation.${idPart}`;
   return `https://wa.me/${targetNumber}?text=${encodeURIComponent(message)}`;
 }
 
@@ -232,7 +234,7 @@ export function generateCompanionRegistrationWhatsAppUrl(
 ): string {
   const targetNumber = cleanWhatsAppNumber(companionPhone);
   const name = companionName ? companionName.trim() : 'Companion';
-  const message = `Hello ${name}, we received your ₹499 companion registration application for Navratri Companion. Your application is currently under review by our verification team.`;
+  const message = `Hello ${name}, your ₹499 companion registration payment has been received and your application is currently under review.`;
   return `https://wa.me/${targetNumber}?text=${encodeURIComponent(message)}`;
 }
 

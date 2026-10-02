@@ -16,12 +16,14 @@ export default async function handler(req: any, res: any) {
       const allBookings = await getAllBookings();
       
       const payments = allBookings.map((b) => {
-        const rawStatus = (b.paymentStatus || 'PENDING').toUpperCase();
+        const rawStatus = (b.paymentStatus || 'PENDING_CONFIRMATION').toUpperCase();
         let displayStatus: 'PENDING_CONFIRMATION' | 'CONFIRMED' | 'REJECTED' = 'PENDING_CONFIRMATION';
         if (rawStatus === 'PAID' || rawStatus === 'CONFIRMED') {
           displayStatus = 'CONFIRMED';
-        } else if (rawStatus === 'REJECTED') {
+        } else if (rawStatus === 'REJECTED' || rawStatus === 'FAILED' || b.status === 'cancelled') {
           displayStatus = 'REJECTED';
+        } else {
+          displayStatus = 'PENDING_CONFIRMATION';
         }
 
         return {

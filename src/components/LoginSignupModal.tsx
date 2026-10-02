@@ -28,6 +28,7 @@ import {
 import { PhotoUpload } from './PhotoUpload';
 import { generateWhatsAppUrl, trackWhatsAppClick } from '../utils/whatsapp';
 import { WhatsAppIcon } from './FloatingWhatsAppButton';
+import { getPlatformUpiConfig, generatePaymentReference } from '../utils/upi';
 
 // Helper to calculate age from Date of Birth
 const calculateAge = (dobString: string): number | null => {

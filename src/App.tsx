@@ -35,7 +35,7 @@ import {
   CompanionPayout,
   HostApplicant,
 } from './types';
-import { fetchUserProfileFromDb, saveUserProfileToDb } from './services/dbService';
+import { fetchUserProfileFromDb, saveUserProfileToDb, fetchBookingsFromDb } from './services/dbService';
 
 // User profile persistent storage map by userId
 export const getUserProfilesMap = (): Record<string, UserProfile> => {
@@ -243,6 +243,80 @@ export default function App() {
     }
   }, [isLoggedIn, currentView]);
 
+  // Sync Customer Bookings live from Supabase Central Database
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const syncCustomerBookings = async () => {
+      try {
+        const cId = profile.userId || undefined;
+        const dbRows = await fetchBookingsFromDb({ customerId: cId });
+        if (Array.isArray(dbRows) && dbRows.length > 0) {
+          const mapped: Booking[] = dbRows.map((b: any) => ({
+            id: b.bookingReference || b.id,
+            companionId: b.companionId,
+            companionName: b.companionName,
+            companionAge: b.companionAge || 22,
+            companionCity: b.companionCity || b.city || 'Ahmedabad',
+            companionAvatar: b.companionAvatar || '',
+            companionPhone: b.companionPhone || '',
+            companionUpi: b.companionUpi,
+            guestName: b.customerName || 'Verified Guest',
+            guestPhone: b.customerPhone || '',
+            date: b.date,
+            rawDate: b.rawDate || b.date,
+            timeSlot: b.timeSlot,
+            duration: b.durationPackage === '4 Hours' ? '4 Hours' : '2 Hours',
+            venue: b.venue,
+            baseFee: b.basePrice,
+            platformFee: b.platformFee,
+            totalFee: b.totalPrice,
+            status: b.status,
+            escrowStatus: b.escrowStatus,
+            paymentStatus: b.paymentStatus,
+            paymentReference: b.paymentReference,
+            checkedIn: Boolean(b.checkInAt),
+            sessionStarted: Boolean(b.checkInAt),
+            completionOtp: b.completionOtp,
+            completionOtpVerified: Boolean(b.otpVerified),
+            completedAt: b.completedAt,
+            payoutStatus: b.payoutStatus || 'escrow_held',
+            bookedAt: b.createdAt,
+          }));
+
+          setBookings((prev) => {
+            const prevMap = new Map(prev.map((p) => [p.id, p]));
+            mapped.forEach((mb) => {
+              const old = prevMap.get(mb.id);
+              if (
+                old &&
+                (old.paymentStatus === 'PENDING_CONFIRMATION' || old.status === 'pending') &&
+                (mb.paymentStatus === 'CONFIRMED' || mb.status === 'confirmed')
+              ) {
+                const confirmedNotif: NotificationItem = {
+                  id: `notif-${Date.now()}-${mb.id}`,
+                  title: `Booking Confirmed with ${mb.companionName}!`,
+                  message: `Payment confirmed by platform. Your pass for ${mb.date} (${mb.timeSlot}) at ${mb.venue} is secured. Contact unlocked.`,
+                  timeAgo: 'Just now',
+                  read: false,
+                  type: 'booking',
+                };
+                setNotifications((n) => [confirmedNotif, ...n]);
+              }
+            });
+            return mapped;
+          });
+        }
+      } catch (e) {
+        // Fallback
+      }
+    };
+
+    syncCustomerBookings();
+    const interval = setInterval(syncCustomerBookings, 6000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, profile.userId]);
+
   const handleNavigate = (view: string, companionId?: string) => {
     // Protected route check
     if (view === 'dashboard' && !isLoggedIn) {
@@ -343,8 +417,8 @@ export default function App() {
     // Add notification
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
-      title: `Booking Confirmed with ${newBooking.companionName}!`,
-      message: `Your pass for ${newBooking.date} (${newBooking.timeSlot}) at ${newBooking.venue} is secured. Contact unlocked.`,
+      title: `Payment Submitted — Verification Pending`,
+      message: `Your booking payment for ${newBooking.companionName} (${newBooking.date}) is awaiting platform confirmation. Escrow will lock once verified.`,
       timeAgo: 'Just now',
       read: false,
       type: 'booking'
