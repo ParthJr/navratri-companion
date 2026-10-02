@@ -389,10 +389,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         {(activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION') ? (
                           <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                             <div className="flex items-center gap-2">
-                              <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-spin" />
+                              <Lock className="w-4 h-4 text-amber-700 shrink-0" />
                               <div>
-                                <strong className="block text-amber-950 font-bold">Payment submitted — waiting for platform confirmation.</strong>
-                                <span className="text-amber-800 text-xs">Super Admin is reviewing your ₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} UPI transaction. Companion contact will unlock immediately upon verification.</span>
+                                <strong className="block text-amber-950 font-bold">🔒 Contact Details Locked</strong>
+                                <span className="text-amber-800 text-xs">Payment submitted — waiting for platform confirmation. Phone &amp; WhatsApp number will be unlocked immediately on your pass once Super Admin verifies the payment.</span>
                               </div>
                             </div>
                             <span className="font-mono text-xs bg-amber-200 text-amber-950 px-2.5 py-1 rounded-full font-bold uppercase self-start sm:self-auto shrink-0 shadow-2xs">
@@ -422,8 +422,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <div className="bg-[#eff4ff] p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 border border-[#cec3ce]/30">
                             <div>
                               <div className="flex items-center gap-2 text-xs font-semibold text-[#12001f]">
-                                <Lock className="w-4 h-4 text-[#9b4500]" />
-                                <span>Unlocked Companion Contacts (₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} locked in escrow)</span>
+                                <span className="text-sm">🔓</span>
+                                <span className="font-bold">Contact Details Unlocked</span>
+                                <span className="text-[#596579] font-normal">(₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} locked in escrow)</span>
                               </div>
                               <span className="text-xs text-[#596579]">Direct coordinates unlocked for festival coordination.</span>
                             </div>
@@ -435,16 +436,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                     className="flex-1 sm:flex-none bg-[#311042] text-white px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-[#9b4500] transition-colors"
                                   >
                                     <Phone className="w-3.5 h-3.5" />
-                                    <span>{activeUpcomingBooking.companionPhone}</span>
+                                    <span>Phone: {activeUpcomingBooking.companionPhone}</span>
                                   </a>
                                   <a
                                     href={`https://wa.me/${activeUpcomingBooking.companionPhone.replace(/\D/g, '')}?text=Hello%20${encodeURIComponent(activeUpcomingBooking.companionName)},%20I%20have%20booked%20our%20Navratri%20Garba%20companion%20session%20for%20${encodeURIComponent(activeUpcomingBooking.date)}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="flex-1 sm:flex-none bg-emerald-50 text-emerald-800 border border-emerald-300 px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-emerald-100 transition-colors"
+                                    className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
                                   >
-                                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>WhatsApp</span>
+                                    <MessageCircle className="w-3.5 h-3.5 text-white" />
+                                    <span>WhatsApp Companion</span>
                                   </a>
                                 </>
                               ) : (

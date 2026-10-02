@@ -278,6 +278,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <Lock className="w-4 h-4 text-[#ffdbca]" />
                   <span>Lock ₹{totalPrice.toLocaleString('en-IN')} in Escrow</span>
                 </button>
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>
+                    <strong>Contact Details Locked:</strong> Phone &amp; WhatsApp number will be unlocked immediately on your pass after successful booking payment.
+                  </span>
+                </div>
                 <div className="flex items-center justify-center gap-1 text-[11px] text-[#596579]">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span>Funds released to companion only after mutual arrival check-in.</span>

@@ -567,7 +567,7 @@ export const PaymentApprovalsTab: React.FC = () => {
                                     title="Confirm payment and lock escrow"
                                   >
                                     <Check className="w-3.5 h-3.5" />
-                                    <span>CONFIRM</span>
+                                    <span>Confirm Payment</span>
                                   </button>
 
                                   <button
