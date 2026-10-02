@@ -193,17 +193,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             </div>
 
-            {onOpenCreateProfile && (
-              <button
-                onClick={onOpenCreateProfile}
-                className="bg-[#eff4ff] hover:bg-[#dee9fc] text-[#311042] border border-[#cec3ce]/50 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 cursor-pointer min-h-[44px]"
-                title={profile.hasCompletedProfile ? 'Edit Profile Settings' : 'Create Profile'}
-              >
-                <User className="w-4 h-4 text-[#9b4500]" />
-                <span>{profile.hasCompletedProfile ? 'Profile' : 'Create Profile'}</span>
-              </button>
-            )}
-
             <button
               onClick={onNavigateToMarketplace}
               className="bg-[#311042] text-white px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 sm:gap-2 hover:bg-[#9b4500] transition-colors shadow-sm active:scale-95 min-h-[44px]"

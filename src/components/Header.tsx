@@ -154,18 +154,6 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
                 </button>
 
-                {/* My Profile / Create Profile (Desktop) */}
-                {onOpenCreateProfile && (
-                  <button
-                    onClick={onOpenCreateProfile}
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-xl bg-[#eff4ff] hover:bg-[#dee9fc] text-[#311042] border border-[#cec3ce]/50 text-xs font-bold transition-all cursor-pointer shadow-xs"
-                    title={hasCompletedProfile ? 'View or Edit Profile' : 'Create Profile'}
-                  >
-                    <User className="w-3.5 h-3.5 text-[#9b4500]" />
-                    <span>{hasCompletedProfile ? 'Profile' : 'Create Profile'}</span>
-                  </button>
-                )}
-
                 {/* Logout (Desktop) */}
                 <button
                   onClick={() => onLogout && onLogout()}
