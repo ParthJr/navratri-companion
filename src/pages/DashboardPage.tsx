@@ -469,9 +469,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                   <Sparkles className="w-4 h-4 text-[#fd8a42]" />
                                   <span>Session Active (In Progress)</span>
                                 </div>
-                                <p className="text-xs text-slate-200 mt-0.5">
-                                  Provide Completion OTP <strong className="font-mono text-amber-300 font-black text-sm">{activeUpcomingBooking.completionOtp || '8492'}</strong> to companion after session finishes.
-                                </p>
+                                {profile.role === 'companion' ? (
+                                  <p className="text-xs text-slate-200 mt-0.5">
+                                    Ask <strong>{activeUpcomingBooking.customerName || 'the customer'}</strong> for their 4-digit Completion OTP once Garba ends.
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-slate-200 mt-0.5">
+                                    Customer Completion OTP: <strong className="font-mono text-amber-300 font-black text-sm">{activeUpcomingBooking.completionOtp || '8492'}</strong>. Share with companion after session finishes.
+                                  </p>
+                                )}
                               </div>
                               <button
                                 type="button"
@@ -479,7 +485,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                 className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#fd8a42] to-[#c9184a] hover:opacity-95 text-white font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
                               >
                                 <CheckCircle2 className="w-4 h-4 text-[#ffdbca]" />
-                                <span>Complete Session &amp; Enter OTP</span>
+                                <span>{profile.role === 'companion' ? 'Enter Completion OTP & Finish Session' : 'Customer Completion OTP'}</span>
                               </button>
                             </div>
                           )}
@@ -531,7 +537,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#311042] text-white hover:bg-[#9b4500] flex items-center gap-2 transition-all shadow-xs cursor-pointer"
                               >
                                 <CheckCircle2 className="w-4 h-4 text-[#fd8a42]" />
-                                <span>Finish Meeting &amp; Verify OTP</span>
+                                <span>{profile.role === 'companion' ? 'Verify Completion OTP & Complete' : 'Customer Completion OTP'}</span>
                               </button>
                             )
                           ) : (
@@ -1219,6 +1225,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {selectedBookingForOtp && (
         <CompletionOtpModal
           booking={selectedBookingForOtp}
+          role={profile.role}
+          companionId={profile.userId}
           onClose={() => setSelectedBookingForOtp(null)}
           onVerifiedSuccess={() => {
             const updated: Booking = {

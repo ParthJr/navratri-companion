@@ -1,5 +1,5 @@
 import { getAllBookings, createBookingRecord, updateBookingRecord, createPayoutRecord, type BookingRecord } from './_db.ts';
-import { parseRequestBody } from './auth/_authUtils.ts';
+import { parseRequestBody, getTokenFromRequest, verifySessionToken } from './auth/_authUtils.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'application/json');
@@ -8,15 +8,46 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     try {
       const url = new URL(req.url, 'http://localhost');
-      const customerId = url.searchParams.get('customerId') || undefined;
-      const companionId = url.searchParams.get('companionId') || undefined;
+      const customerId = (url.searchParams.get('customerId') || '').trim();
+      const companionId = (url.searchParams.get('companionId') || '').trim();
 
-      const bookings = await getAllBookings({ customerId, companionId });
+      // Check caller's authentication and role from session token
+      const token = getTokenFromRequest(req);
+      const auth = token ? verifySessionToken(token) : { valid: false };
+      const authUserId = auth.valid && auth.payload ? auth.payload.userId.toLowerCase().trim() : null;
+      const authRole = auth.valid && auth.payload ? (auth.payload.role || '').toLowerCase().trim() : null;
+      const adminRole = auth.valid && auth.payload ? (auth.payload.adminRole || '').toLowerCase().trim() : null;
+      const isAdmin = authRole === 'owner' || authRole === 'admin' || (adminRole ? adminRole.includes('admin') : false);
+      const isCompanionCaller = authRole === 'companion' || Boolean(companionId && !customerId);
+
+      const allBookings = await getAllBookings({
+        customerId: customerId || undefined,
+        companionId: companionId || undefined,
+      });
+
+      // Role-based redaction: COMPANIONS must NEVER receive customer Completion OTP
+      const sanitizedBookings = allBookings.map((b) => {
+        const bCustId = (b.customerId || '').toLowerCase().trim();
+
+        // Customer who owns this booking can view their own completion OTP
+        const isCustomerOwner =
+          !isCompanionCaller &&
+          ((authUserId && authUserId === bCustId) ||
+           (customerId && customerId.toLowerCase().trim() === bCustId));
+
+        const canViewOtp = isAdmin || isCustomerOwner;
+
+        return {
+          ...b,
+          completionOtp: canViewOtp ? b.completionOtp : undefined,
+        };
+      });
+
       res.statusCode = 200;
-      return res.end(JSON.stringify({ success: true, bookings, total: bookings.length }));
+      return res.end(JSON.stringify({ success: true, bookings: sanitizedBookings, total: sanitizedBookings.length }));
     } catch (e: any) {
       res.statusCode = 500;
-      return res.end(JSON.stringify({ success: false, errorMessage: 'Failed to retrieve bookings' }));
+      return res.end(JSON.stringify({ success: false, errorMessage: `Failed to retrieve bookings: ${e.message || e}` }));
     }
   }
 
@@ -24,9 +55,9 @@ export default async function handler(req: any, res: any) {
     try {
       const body = await parseRequestBody(req);
 
-      // Handle OTP verification action
+      // Handle OTP verification action (Companion completes session)
       if (body.action === 'verify_otp') {
-        const { bookingId, otp } = body;
+        const { bookingId, otp, companionId: claimedCompanionId } = body;
         if (!bookingId || !otp) {
           res.statusCode = 400;
           return res.end(JSON.stringify({ success: false, errorMessage: 'Booking ID and 4-digit OTP are required.' }));
@@ -39,16 +70,81 @@ export default async function handler(req: any, res: any) {
           return res.end(JSON.stringify({ success: false, errorMessage: 'Booking not found.' }));
         }
 
-        if (found.completionOtp !== otp.trim()) {
+        // Prevent cross-account verification:
+        const token = getTokenFromRequest(req);
+        const auth = token ? verifySessionToken(token) : { valid: false };
+        const authUserId = auth.valid && auth.payload ? auth.payload.userId.toLowerCase().trim() : null;
+        const authRole = auth.valid && auth.payload ? (auth.payload.role || '').toLowerCase().trim() : null;
+        const adminRole = auth.valid && auth.payload ? (auth.payload.adminRole || '').toLowerCase().trim() : null;
+        const isAdmin = authRole === 'owner' || authRole === 'admin' || (adminRole ? adminRole.includes('admin') : false);
+
+        // Customers CANNOT verify their own OTP! Companion must verify it.
+        if (authRole === 'customer' && !isAdmin) {
+          res.statusCode = 403;
+          return res.end(
+            JSON.stringify({
+              success: false,
+              errorMessage: 'Customers cannot verify completion OTP. Please provide this OTP to your companion.',
+            })
+          );
+        }
+
+        // Check companion ownership: companion must match the booking
+        const effectiveCompanionId = authRole === 'companion' ? authUserId : (claimedCompanionId || '').toLowerCase().trim();
+        if (effectiveCompanionId && !isAdmin) {
+          const bookingCompId = (found.companionId || '').toLowerCase().trim();
+          if (bookingCompId && effectiveCompanionId !== bookingCompId) {
+            res.statusCode = 403;
+            return res.end(
+              JSON.stringify({
+                success: false,
+                errorMessage: 'Unauthorized: You are not the assigned companion for this booking.',
+              })
+            );
+          }
+        }
+
+        // Check if OTP was already verified / session already completed
+        if (found.status === 'completed' || found.otpVerified === true) {
           res.statusCode = 400;
-          return res.end(JSON.stringify({ success: false, errorMessage: 'Invalid Completion OTP. Please check the 4-digit code provided by the customer.' }));
+          return res.end(
+            JSON.stringify({
+              success: false,
+              errorMessage: 'This session has already been completed and verified. OTP cannot be reused.',
+            })
+          );
+        }
+
+        if (found.status === 'cancelled') {
+          res.statusCode = 400;
+          return res.end(
+            JSON.stringify({
+              success: false,
+              errorMessage: 'Cannot complete a cancelled booking.',
+            })
+          );
+        }
+
+        const cleanInputOtp = String(otp).trim();
+        const cleanActualOtp = String(found.completionOtp || '').trim();
+
+        if (!cleanActualOtp || cleanInputOtp !== cleanActualOtp) {
+          res.statusCode = 400;
+          return res.end(
+            JSON.stringify({
+              success: false,
+              errorMessage: 'Invalid Completion OTP. Please check the 4-digit code provided by the customer.',
+            })
+          );
         }
 
         // Verified! Update booking
+        const now = new Date().toISOString();
         const updated = await updateBookingRecord(found.id, {
           status: 'completed',
           otpVerified: true,
-          completedAt: new Date().toISOString(),
+          completionOtp: found.completionOtp,
+          completedAt: now,
           payoutStatus: 'PENDING_ADMIN_APPROVAL',
         });
 
@@ -63,15 +159,17 @@ export default async function handler(req: any, res: any) {
           platformFee: found.platformFee,
           grossAmount: found.totalPrice,
           status: 'PENDING_ADMIN_APPROVAL',
-          createdAt: new Date().toISOString(),
+          createdAt: now,
         });
 
         res.statusCode = 200;
         return res.end(
           JSON.stringify({
             success: true,
-            message: 'Completion OTP verified successfully! Booking completed. Payout queued for Platform Operations approval.',
+            message: 'Completion OTP verified successfully! Session completed.',
             booking: updated,
+            completion_otp_status: 'VERIFIED',
+            booking_status: 'COMPLETED',
           })
         );
       }

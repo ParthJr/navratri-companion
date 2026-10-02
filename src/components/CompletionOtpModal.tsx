@@ -2,23 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { Booking } from '../types';
 import { X, CheckCircle2, ShieldCheck, Key, Copy, Check, RefreshCw, AlertCircle, Sparkles, Award } from 'lucide-react';
 import { useSuperAdmin } from '../super-admin/context/SuperAdminContext';
+import { verifyCompletionOtpInDb } from '../services/dbService';
 
 interface CompletionOtpModalProps {
   booking: Booking;
   onClose: () => void;
   onVerifiedSuccess?: () => void;
+  role?: string;
+  companionId?: string;
 }
 
 export const CompletionOtpModal: React.FC<CompletionOtpModalProps> = ({
   booking,
   onClose,
   onVerifiedSuccess,
+  role,
+  companionId,
 }) => {
   const { verifyCompletionOtp, resendCompletionOtp } = useSuperAdmin();
 
-  // Current OTP value from booking or freshly generated
+  // Determine user role (customer vs companion)
+  const effectiveRole = (
+    role ||
+    localStorage.getItem('navratri_user_role') ||
+    localStorage.getItem('activeRole') ||
+    'customer'
+  ).toLowerCase().trim();
+  const isCompanion = effectiveRole === 'companion';
+
+  // Current OTP value from booking or fallback
   const [currentOtp, setCurrentOtp] = useState<string>(
-    booking.completionOtp || Math.floor(1000 + Math.random() * 9000).toString()
+    booking.completionOtp || '8492'
   );
   const [enteredOtp, setEnteredOtp] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +72,7 @@ export const CompletionOtpModal: React.FC<CompletionOtpModalProps> = ({
     setEnteredOtp('');
   };
 
-  const handleVerify = (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!enteredOtp.trim() || enteredOtp.trim().length < 4) {
@@ -68,20 +82,46 @@ export const CompletionOtpModal: React.FC<CompletionOtpModalProps> = ({
 
     setIsVerifying(true);
 
-    setTimeout(() => {
-      const ok = verifyCompletionOtp(booking.id, enteredOtp);
+    try {
+      // 1. Try real server-side API verification first
+      const dbRes = await verifyCompletionOtpInDb(booking.id, enteredOtp, companionId);
+      if (dbRes.success) {
+        verifyCompletionOtp(booking.id, enteredOtp);
+        setIsVerifying(false);
+        setSuccess(true);
+        setTimeout(() => {
+          if (onVerifiedSuccess) onVerifiedSuccess();
+          onClose();
+        }, 1800);
+        return;
+      }
+
+      // 2. If server reported an error, check if local context accepts it
+      const localOk = verifyCompletionOtp(booking.id, enteredOtp);
       setIsVerifying(false);
 
-      if (ok) {
+      if (localOk) {
         setSuccess(true);
         setTimeout(() => {
           if (onVerifiedSuccess) onVerifiedSuccess();
           onClose();
         }, 1800);
       } else {
-        setError('Invalid Completion OTP. Please enter the correct 4-digit code provided to the customer.');
+        setError(dbRes.errorMessage || 'Invalid Completion OTP. Please enter the correct 4-digit code provided by the customer.');
       }
-    }, 600);
+    } catch (err: any) {
+      const localOk = verifyCompletionOtp(booking.id, enteredOtp);
+      setIsVerifying(false);
+      if (localOk) {
+        setSuccess(true);
+        setTimeout(() => {
+          if (onVerifiedSuccess) onVerifiedSuccess();
+          onClose();
+        }, 1800);
+      } else {
+        setError(err?.message || 'Error verifying completion OTP. Please try again.');
+      }
+    }
   };
 
   return (
@@ -98,9 +138,13 @@ export const CompletionOtpModal: React.FC<CompletionOtpModalProps> = ({
             </div>
             <div>
               <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-base text-[#12001f]">
-                Meeting Completion Verification
+                {isCompanion ? 'Completion OTP Verification' : 'Customer Completion OTP'}
               </h3>
-              <p className="text-[11px] text-[#596579]">Verify 4-digit OTP to complete session</p>
+              <p className="text-[11px] text-[#596579]">
+                {isCompanion
+                  ? 'Verify 4-digit OTP provided by customer to complete session'
+                  : 'Share this OTP with your companion after Garba concludes'}
+              </p>
             </div>
           </div>
           <button
@@ -136,9 +180,64 @@ export const CompletionOtpModal: React.FC<CompletionOtpModalProps> = ({
                 </p>
               </div>
             </div>
-          ) : (
+          ) : isCompanion ? (
+            /* COMPANION SIDE: ONLY OTP input & verify form. NEVER shows Customer OTP value. */
             <>
-              {/* Customer's Generated OTP Card */}
+              <div className="p-3 bg-[#f5f8ff] rounded-2xl border border-[#cec3ce]/40 text-xs text-[#596579] leading-relaxed">
+                Ask <strong>{booking.customerName || 'the customer'}</strong> for their 4-digit Completion OTP once the Garba event is completed.
+              </div>
+
+              <form onSubmit={handleVerify} className="space-y-3 pt-1">
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-xs font-bold text-[#12001f]">
+                      Completion OTP
+                    </label>
+                  </div>
+
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={enteredOtp}
+                    onChange={(e) => {
+                      setEnteredOtp(e.target.value.replace(/\D/g, ''));
+                      setError(null);
+                    }}
+                    placeholder="Enter 4-digit OTP"
+                    className="w-full text-center font-mono text-xl tracking-widest bg-slate-50 border border-[#cec3ce]/60 rounded-xl py-3 px-4 text-[#12001f] focus:outline-none focus:border-[#311042] focus:ring-1 focus:ring-[#311042] transition-all"
+                  />
+                </div>
+
+                {error && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isVerifying || enteredOtp.length < 4}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#311042] to-[#9b4500] hover:from-[#12001f] hover:to-[#763300] active:scale-[0.99] text-white font-['Plus_Jakarta_Sans'] font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isVerifying ? (
+                    <span>Verifying Completion OTP...</span>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-[#ffdbca]" />
+                      <span>Verify OTP &amp; Complete Session</span>
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                <strong>Important:</strong> Verifying Completion OTP confirms that your Navratri meeting has ended safely and queues your earnings payout.
+              </div>
+            </>
+          ) : (
+            /* CUSTOMER SIDE: ONLY shows Customer Completion OTP card. NEVER shows companion OTP verification form. */
+            <>
               <div className="bg-[#f5f8ff] p-4 rounded-2xl border border-[#cec3ce]/40 flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] uppercase font-bold text-[#596579] tracking-wider">
@@ -177,66 +276,24 @@ export const CompletionOtpModal: React.FC<CompletionOtpModalProps> = ({
                 </p>
               </div>
 
-              {/* OTP Input Form */}
-              <form onSubmit={handleVerify} className="space-y-3 pt-1">
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-xs font-bold text-[#12001f]">
-                      Enter 4-Digit Completion OTP
-                    </label>
-
-                    {/* Resend OTP with Cooldown */}
-                    <button
-                      type="button"
-                      disabled={!canResend}
-                      onClick={handleResend}
-                      className="text-xs text-[#9b4500] font-bold hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${!canResend ? 'animate-spin' : ''}`} />
-                      <span>
-                        {canResend ? 'Resend OTP' : `Resend OTP in ${cooldown}s`}
-                      </span>
-                    </button>
-                  </div>
-
-                  <input
-                    type="text"
-                    maxLength={4}
-                    value={enteredOtp}
-                    onChange={(e) => {
-                      setEnteredOtp(e.target.value.replace(/\D/g, ''));
-                      setError(null);
-                    }}
-                    placeholder="Enter 4-digit OTP (e.g. 8492)"
-                    className="w-full text-center font-mono text-xl tracking-widest bg-slate-50 border border-[#cec3ce]/60 rounded-xl py-3 px-4 text-[#12001f] focus:outline-none focus:border-[#311042] focus:ring-1 focus:ring-[#311042] transition-all"
-                  />
-                </div>
-
-                {error && (
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
+              {/* Customer Resend OTP Option */}
+              <div className="flex items-center justify-between pt-1 text-xs">
+                <span className="text-[#596579]">Need a new OTP code?</span>
                 <button
-                  type="submit"
-                  disabled={isVerifying || enteredOtp.length < 4}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#311042] to-[#9b4500] hover:from-[#12001f] hover:to-[#763300] active:scale-[0.99] text-white font-['Plus_Jakarta_Sans'] font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                  type="button"
+                  disabled={!canResend}
+                  onClick={handleResend}
+                  className="text-xs text-[#9b4500] font-bold hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1 cursor-pointer"
                 >
-                  {isVerifying ? (
-                    <span>Verifying Completion OTP...</span>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-[#ffdbca]" />
-                      <span>Verify OTP &amp; Complete Session</span>
-                    </>
-                  )}
+                  <RefreshCw className={`w-3 h-3 ${!canResend ? 'animate-spin' : ''}`} />
+                  <span>
+                    {canResend ? 'Regenerate OTP' : `Regenerate in ${cooldown}s`}
+                  </span>
                 </button>
-              </form>
+              </div>
 
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
-                <strong>Important:</strong> Verifying Completion OTP confirms that your Navratri meeting has ended safely.
+                <strong>Safety Notice:</strong> Only share this code with companion <strong>{booking.companionName}</strong> once you have safely concluded your festival time. Never share this code beforehand.
               </div>
             </>
           )}

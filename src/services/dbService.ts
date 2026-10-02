@@ -663,12 +663,20 @@ export async function fetchBookingPaymentsFromDb(): Promise<{
 /**
  * Verify 4-digit Completion OTP in central database
  */
-export async function verifyCompletionOtpInDb(bookingId: string, otp: string): Promise<{ success: boolean; message?: string; errorMessage?: string }> {
+export async function verifyCompletionOtpInDb(
+  bookingId: string,
+  otp: string,
+  companionId?: string
+): Promise<{ success: boolean; message?: string; errorMessage?: string }> {
   try {
     const res = await fetch('/api/bookings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'verify_otp', bookingId, otp }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      credentials: 'include',
+      body: JSON.stringify({ action: 'verify_otp', bookingId, otp, companionId }),
     });
     const data = await res.json();
     if (res.ok && data.success) {
