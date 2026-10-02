@@ -1477,7 +1477,7 @@ export const LoginSignupModal: React.FC<LoginSignupModalProps> = ({
                     ? 'Creating Account...'
                     : signupRole === 'customer'
                     ? 'Complete Registration (Free)'
-                    : `Continue to Registration Fee (₹${feeConfigs.companionFee || 499})`}
+                    : 'Continue to Registration Fee'}
                 </span>
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </button>
