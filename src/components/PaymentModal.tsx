@@ -102,15 +102,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       baseFee: basePrice,
       platformFee: platformFee,
       totalFee: totalPrice,
-      status: 'confirmed',
+      status: 'pending' as any,
       escrowStatus: 'Held in Escrow',
+      paymentStatus: 'PENDING_CONFIRMATION' as any,
+      paymentReference: paymentReference,
       checkedIn: false,
       sessionStarted: false,
       payoutStatus: 'escrow_held',
       bookedAt: new Date().toISOString(),
     };
 
-    // 1. Persist booking strictly to Central Supabase PostgreSQL Database
+    // 1. Persist booking strictly to Central Supabase PostgreSQL Database with status PENDING_PAYMENT_VERIFICATION
     try {
       await createBookingInDb({
         companionId: companion.id,
@@ -152,7 +154,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         gatewayFee: 0,
         payoutAmount: basePrice,
         paymentMethod: 'UPI' as const,
-        status: 'paid' as const,
+        status: 'pending_confirmation' as const,
         date: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
         gatewayTxnId: paymentReference,
         paymentReference: paymentReference,
@@ -166,7 +168,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setStep('success');
       setTimeout(() => {
         onPaymentSuccess(newBooking);
-      }, 1400);
+      }, 1600);
     }, 1500);
   };
 
@@ -302,18 +304,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
           {step === 'success' && (
             <div className="py-8 flex flex-col items-center justify-center gap-3 text-center">
-              <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
+              <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
               <div className="space-y-1">
                 <h4 className="font-['Plus_Jakarta_Sans'] font-bold text-xl text-[#12001f]">
-                  Pass Confirmed &amp; Secured!
+                  Payment Submitted
                 </h4>
                 <p className="text-xs text-[#596579]">
-                  ₹{totalPrice.toLocaleString('en-IN')} locked in escrow. Contact unlocked for {companion.name}.
+                  Waiting for platform confirmation.
                 </p>
-                <div className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800">
-                  When you arrive at the agreed location, tap <strong>"I'm Here / Check In"</strong> to start your session.
+                <div className="mt-3 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-850">
+                  Your payment reference <strong>{paymentReference}</strong> has been sent to Super Admin for verification. Once confirmed, ₹{totalPrice.toLocaleString('en-IN')} will be safely locked in escrow.
                 </div>
               </div>
             </div>

@@ -208,6 +208,52 @@ export function generateWhatsAppUrl(options: GenerateWhatsAppUrlOptions = {}): s
 }
 
 /**
+ * Generates WhatsApp URL for Customer Booking Confirmation / Updates
+ */
+export function generateCustomerPaymentWhatsAppUrl(
+  customerPhone?: string,
+  customerName?: string,
+  amount: number = 1270,
+  bookingId?: string
+): string {
+  const targetNumber = cleanWhatsAppNumber(customerPhone);
+  const name = customerName ? customerName.trim() : 'Customer';
+  const idText = bookingId ? ` for Booking ID #${bookingId}` : '';
+  const message = `Hello ${name}, regarding your Navratri Companion booking${idText} (Amount: ₹${amount.toLocaleString('en-IN')}). Your booking payment has been submitted for platform confirmation.`;
+  return `https://wa.me/${targetNumber}?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Generates WhatsApp URL for Companion Registration Review
+ */
+export function generateCompanionRegistrationWhatsAppUrl(
+  companionPhone?: string,
+  companionName?: string
+): string {
+  const targetNumber = cleanWhatsAppNumber(companionPhone);
+  const name = companionName ? companionName.trim() : 'Companion';
+  const message = `Hello ${name}, we received your ₹499 companion registration application for Navratri Companion. Your application is currently under review by our verification team.`;
+  return `https://wa.me/${targetNumber}?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Generates WhatsApp URL for Booking Payment Support / Rejected Payment
+ */
+export function generatePaymentSupportWhatsAppUrl(
+  phone?: string,
+  name?: string,
+  bookingId?: string,
+  reason?: string
+): string {
+  const targetNumber = cleanWhatsAppNumber(phone);
+  const cleanName = name ? name.trim() : 'User';
+  const idText = bookingId ? ` for Booking ID #${bookingId}` : '';
+  const reasonText = reason ? ` Reason: ${reason}.` : '';
+  const message = `Hello ${cleanName}, we noticed an issue verifying your booking payment${idText}.${reasonText} Please reply with your UPI transaction screenshot or UTR for assistance.`;
+  return `https://wa.me/${targetNumber}?text=${encodeURIComponent(message)}`;
+}
+
+/**
  * Analytics tracking for WhatsApp button clicks
  */
 export function trackWhatsAppClick(eventData: {

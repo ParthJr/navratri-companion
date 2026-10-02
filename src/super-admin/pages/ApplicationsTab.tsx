@@ -16,7 +16,8 @@ import {
   HelpCircle,
   RefreshCw,
   User,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MessageCircle,
 } from 'lucide-react';
 import { useSuperAdmin } from '../context/SuperAdminContext';
 import { HostApplicant } from '../../types';
@@ -25,6 +26,7 @@ import {
   approveApplicationInDb,
   rejectApplicationInDb,
 } from '../../services/dbService';
+import { generateCompanionRegistrationWhatsAppUrl } from '../../utils/whatsapp';
 
 export const ApplicationsTab: React.FC = () => {
   const { applicants: contextApplicants, registrationFeeConfig, syncApplicationsWithDb, refreshCompanions } = useSuperAdmin();
@@ -239,14 +241,28 @@ export const ApplicationsTab: React.FC = () => {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => setSelectedApplicant(app)}
-                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Inspect KYC</span>
-                  </button>
+                <div className="pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setSelectedApplicant(app)}
+                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Inspect</span>
+                    </button>
+
+                    {/* WhatsApp Applicant Button */}
+                    <a
+                      href={generateCompanionRegistrationWhatsAppUrl(app.phone, app.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-700/30 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-semibold transition-all cursor-pointer"
+                      title="Contact applicant on WhatsApp"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>WhatsApp</span>
+                    </a>
+                  </div>
 
                   {isPending && (
                     <div className="flex items-center gap-1.5">
@@ -421,25 +437,37 @@ export const ApplicationsTab: React.FC = () => {
               )}
 
               {/* Actions */}
-              <div className="flex justify-end gap-2 pt-3 border-t border-white/10">
-                <button
-                  onClick={() => setActionConfirm({ type: 'request_info', applicant: selectedApplicant })}
-                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-semibold cursor-pointer"
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/10">
+                <a
+                  href={generateCompanionRegistrationWhatsAppUrl(selectedApplicant.phone, selectedApplicant.name)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-xl bg-emerald-700/30 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
                 >
-                  Request Info
-                </button>
-                <button
-                  onClick={() => setActionConfirm({ type: 'reject', applicant: selectedApplicant })}
-                  className="px-3 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 font-semibold cursor-pointer"
-                >
-                  Reject
-                </button>
-                <button
-                  onClick={() => setActionConfirm({ type: 'approve', applicant: selectedApplicant })}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold cursor-pointer"
-                >
-                  Approve Companion
-                </button>
+                  <MessageCircle className="w-4 h-4" />
+                  <span>WhatsApp Applicant</span>
+                </a>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActionConfirm({ type: 'request_info', applicant: selectedApplicant })}
+                    className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 font-semibold text-xs cursor-pointer"
+                  >
+                    Request Info
+                  </button>
+                  <button
+                    onClick={() => setActionConfirm({ type: 'reject', applicant: selectedApplicant })}
+                    className="px-3 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-300 font-semibold text-xs cursor-pointer"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => setActionConfirm({ type: 'approve', applicant: selectedApplicant })}
+                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs cursor-pointer"
+                  >
+                    Approve Companion
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -74,6 +74,7 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
     safetyIncidents,
     payouts,
     customers,
+    bookings,
   } = useSuperAdmin();
 
   const pendingAppsCount = applicants.filter((a) => a.status === 'pending_review').length;
@@ -81,10 +82,14 @@ export const SuperAdminSidebar: React.FC<SuperAdminSidebarProps> = ({
   const activeSosCount = safetyIncidents.filter((s) => s.status === 'active').length;
   const pendingPayoutsCount = payouts.filter((p) => p.status === 'pending').length;
 
-  // Calculate pending payment approvals: strictly query records where payment has been submitted for approval
-  const pendingPaymentApprovalsCount = customers.filter(
+  // Calculate pending payment approvals: combines pending registration fees and pending customer booking escrow payments
+  const pendingCustomerRegCount = customers.filter(
     (c) => c.paymentStatus === 'Pending Verification'
   ).length;
+  const pendingBookingsCount = bookings.filter(
+    (b) => b.paymentStatus === 'PENDING_CONFIRMATION' || b.status === 'pending' || b.status === 'PENDING_PAYMENT_VERIFICATION'
+  ).length;
+  const pendingPaymentApprovalsCount = pendingCustomerRegCount + pendingBookingsCount;
 
   const sections: NavSection[] = [
     {

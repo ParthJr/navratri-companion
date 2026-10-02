@@ -576,11 +576,11 @@ export async function createBookingInDb(bookingData: any): Promise<{ success: bo
  */
 export async function verifyBookingPaymentInDb(bookingId: string): Promise<{ success: boolean; message?: string; errorMessage?: string }> {
   try {
-    const res = await fetch('/api/bookings', {
+    const res = await fetch('/api/admin/booking-payments', {
       method: 'POST',
       headers: getAuthHeaders(),
       credentials: 'include',
-      body: JSON.stringify({ action: 'verify_payment', bookingId }),
+      body: JSON.stringify({ action: 'confirm', bookingId }),
     });
     const data = await res.json();
     if (res.ok && data.success) {
@@ -589,6 +589,74 @@ export async function verifyBookingPaymentInDb(bookingId: string): Promise<{ suc
     return { success: false, errorMessage: data.errorMessage || 'Payment verification failed.' };
   } catch (e: any) {
     return { success: false, errorMessage: e.message || 'Network error verifying payment.' };
+  }
+}
+
+/**
+ * Reject customer booking payment in central database
+ */
+export async function rejectBookingPaymentInDb(bookingId: string, reason?: string): Promise<{ success: boolean; message?: string; errorMessage?: string }> {
+  try {
+    const res = await fetch('/api/admin/booking-payments', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify({ action: 'reject', bookingId, reason }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true, message: data.message };
+    }
+    return { success: false, errorMessage: data.errorMessage || 'Payment rejection failed.' };
+  } catch (e: any) {
+    return { success: false, errorMessage: e.message || 'Network error rejecting payment.' };
+  }
+}
+
+/**
+ * Fetch booking payments queue from central database
+ */
+export async function fetchBookingPaymentsFromDb(): Promise<{
+  success: boolean;
+  payments: any[];
+  pendingCount: number;
+  confirmedCount: number;
+  rejectedCount: number;
+  total: number;
+  errorMessage?: string;
+}> {
+  try {
+    const res = await fetch('/api/admin/booking-payments', {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return data;
+      }
+    }
+    const err = await res.json().catch(() => ({}));
+    return {
+      success: false,
+      payments: [],
+      pendingCount: 0,
+      confirmedCount: 0,
+      rejectedCount: 0,
+      total: 0,
+      errorMessage: err.errorMessage || 'Failed to retrieve booking payments',
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      payments: [],
+      pendingCount: 0,
+      confirmedCount: 0,
+      rejectedCount: 0,
+      total: 0,
+      errorMessage: e.message,
+    };
   }
 }
 

@@ -34,6 +34,7 @@ import { ReportProblemModal } from '../components/ReportProblemModal';
 import { CancelBookingModal } from '../components/CancelBookingModal';
 import { EmergencySosModal } from '../components/EmergencySosModal';
 import { useSuperAdmin } from '../super-admin/context/SuperAdminContext';
+import { generatePaymentSupportWhatsAppUrl } from '../utils/whatsapp';
 
 interface DashboardPageProps {
   bookings: Booking[];
@@ -314,11 +315,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {/* Upcoming Booking Highlight Card */}
                 {activeUpcomingBooking ? (
                   <div className="bg-white rounded-2xl p-6 sm:p-7 shadow-sm border border-[#cec3ce]/30 relative overflow-hidden">
-                    {/* Confirmed Status Ribbon */}
-                    <div className="absolute top-0 right-0 bg-[#9b4500] text-white px-4 py-1 rounded-bl-xl text-xs font-semibold flex items-center gap-1 shadow-xs">
-                      <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                      <span>Confirmed ✓</span>
-                    </div>
+                    {/* Status Ribbon */}
+                    {activeUpcomingBooking.paymentStatus === 'REJECTED' || activeUpcomingBooking.status === 'cancelled' ? (
+                      <div className="absolute top-0 right-0 bg-rose-600 text-white px-4 py-1 rounded-bl-xl text-xs font-semibold flex items-center gap-1 shadow-xs">
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>Payment Rejected / Cancelled</span>
+                      </div>
+                    ) : (activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION') ? (
+                      <div className="absolute top-0 right-0 bg-amber-500 text-white px-4 py-1 rounded-bl-xl text-xs font-semibold flex items-center gap-1 shadow-xs animate-pulse">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Payment Submitted — Verification Pending</span>
+                      </div>
+                    ) : (
+                      <div className="absolute top-0 right-0 bg-emerald-600 text-white px-4 py-1 rounded-bl-xl text-xs font-semibold flex items-center gap-1 shadow-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Confirmed &amp; Secured ✓</span>
+                      </div>
+                    )}
 
                     <div className="flex flex-col md:flex-row gap-6 items-start">
                       {/* Photo */}
@@ -356,18 +369,57 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           </div>
                           <div className="flex items-center gap-2">
                             <CreditCard className="w-4 h-4 text-[#9b4500]" />
-                            <span className="text-emerald-700 font-medium">
-                              Paid • {activeUpcomingBooking.escrowStatus}
-                            </span>
+                            {activeUpcomingBooking.paymentStatus === 'REJECTED' ? (
+                              <span className="text-rose-600 font-semibold">Payment Rejected</span>
+                            ) : (activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION') ? (
+                              <span className="text-amber-600 font-semibold">Verification Pending</span>
+                            ) : (
+                              <span className="text-emerald-700 font-semibold">₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} locked in escrow</span>
+                            )}
                           </div>
                         </div>
 
-                        {/* Unlocked Contacts Section */}
-                        {activeUpcomingBooking.status !== 'cancelled' ? (
+                        {/* Escrow & Contact status handling */}
+                        {(activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION') ? (
+                          <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-spin" />
+                              <div>
+                                <strong className="block text-amber-950 font-bold">Payment submitted — waiting for platform confirmation.</strong>
+                                <span className="text-amber-800 text-[11px]">Super Admin is reviewing your ₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} UPI transaction. Companion contact will unlock immediately upon verification.</span>
+                              </div>
+                            </div>
+                            <span className="font-mono text-[10px] bg-amber-200 text-amber-950 px-2.5 py-0.5 rounded-full font-black uppercase self-start sm:self-auto shrink-0">
+                              PENDING CONFIRMATION
+                            </span>
+                          </div>
+                        ) : activeUpcomingBooking.paymentStatus === 'REJECTED' || activeUpcomingBooking.status === 'cancelled' ? (
+                          <div className="bg-rose-50 p-3.5 rounded-xl border border-rose-200 text-rose-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-semibold">
+                            <div className="flex items-center gap-2">
+                              <Lock className="w-4 h-4 text-rose-600 shrink-0" />
+                              <div>
+                                <strong className="block text-rose-950 font-bold">Payment could not be confirmed. Please contact support.</strong>
+                                <span className="text-rose-800 text-[11px] font-normal">If you were debited, click WhatsApp support with your payment reference.</span>
+                              </div>
+                            </div>
+                            <a
+                              href={generatePaymentSupportWhatsAppUrl(undefined, profile.name, activeUpcomingBooking.id, activeUpcomingBooking.rejectionReason)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-emerald-500 transition-colors shrink-0"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>Contact WhatsApp Support</span>
+                            </a>
+                          </div>
+                        ) : (
                           <div className="bg-[#eff4ff] p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 border border-[#cec3ce]/30">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-[#12001f]">
-                              <Lock className="w-4 h-4 text-[#9b4500]" />
-                              <span>Unlocked Companion Contacts</span>
+                            <div>
+                              <div className="flex items-center gap-2 text-xs font-semibold text-[#12001f]">
+                                <Lock className="w-4 h-4 text-[#9b4500]" />
+                                <span>Unlocked Companion Contacts (₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} locked in escrow)</span>
+                              </div>
+                              <span className="text-[11px] text-[#596579]">Direct coordinates unlocked for festival coordination.</span>
                             </div>
                             <div className="flex items-center gap-2 w-full sm:w-auto">
                               <a
@@ -378,7 +430,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                 <span>{activeUpcomingBooking.companionPhone}</span>
                               </a>
                               <a
-                                href={`https://wa.me/919876543210?text=Hello%20${activeUpcomingBooking.companionName},%20I%20have%20booked%20our%20Navratri%20Garba%20companion%20session%20for%20${encodeURIComponent(activeUpcomingBooking.date)}`}
+                                href={`https://wa.me/${activeUpcomingBooking.companionPhone.replace(/\D/g, '') || '918200564182'}?text=Hello%20${encodeURIComponent(activeUpcomingBooking.companionName)},%20I%20have%20booked%20our%20Navratri%20Garba%20companion%20session%20for%20${encodeURIComponent(activeUpcomingBooking.date)}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="flex-1 sm:flex-none bg-emerald-50 text-emerald-800 border border-emerald-300 px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-emerald-100 transition-colors"
@@ -387,16 +439,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                 <span>WhatsApp</span>
                               </a>
                             </div>
-                          </div>
-                        ) : (
-                          <div className="bg-rose-50 p-3.5 rounded-xl border border-rose-200 text-rose-900 text-xs flex items-center justify-between font-semibold">
-                            <span className="flex items-center gap-1.5">
-                              <Lock className="w-4 h-4 text-rose-600" />
-                              <span>Contact access revoked (Booking Cancelled)</span>
-                            </span>
-                            <span className="font-mono text-[10px] bg-rose-200 text-rose-950 px-2.5 py-0.5 rounded-full font-black uppercase">
-                              REFUNDED
-                            </span>
                           </div>
                         )}
 
@@ -592,14 +634,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             <div className="flex items-center gap-2">
                               <span
                                 className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                                  b.status === 'confirmed'
+                                  (b.paymentStatus === 'CONFIRMED' || b.paymentStatus === 'PAID' || b.status === 'confirmed')
                                     ? 'bg-emerald-100 text-emerald-800'
-                                    : b.status === 'cancelled'
+                                    : (b.paymentStatus === 'REJECTED' || b.status === 'cancelled')
                                     ? 'bg-rose-100 text-rose-800'
-                                    : 'bg-slate-200 text-slate-700'
+                                    : 'bg-amber-100 text-amber-800 animate-pulse'
                                 }`}
                               >
-                                {b.status} {b.status === 'confirmed' && '✓'}
+                                {(b.paymentStatus === 'CONFIRMED' || b.paymentStatus === 'PAID' || b.status === 'confirmed')
+                                  ? '₹' + b.totalFee + ' Locked in Escrow ✓'
+                                  : (b.paymentStatus === 'REJECTED' || b.status === 'cancelled')
+                                  ? 'Payment Rejected'
+                                  : 'Waiting Platform Confirmation'}
                               </span>
                               <span className="text-xs text-[#596579]">Pass #{b.id}</span>
                             </div>

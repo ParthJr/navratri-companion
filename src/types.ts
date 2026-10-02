@@ -48,8 +48,11 @@ export interface Booking {
   baseFee: number; // Companion gets 100% of this!
   platformFee: number; // Platform fee
   totalFee: number; // baseFee + platformFee
-  status: 'confirmed' | 'active' | 'completed' | 'cancelled';
-  escrowStatus: 'Held in Escrow' | 'Released upon Check-in' | 'Refunded';
+  status: 'pending' | 'PENDING_PAYMENT_VERIFICATION' | 'confirmed' | 'active' | 'completed' | 'cancelled';
+  escrowStatus: 'Held in Escrow' | 'LOCKED' | 'Released upon Check-in' | 'Refunded';
+  paymentStatus?: 'PENDING' | 'PENDING_CONFIRMATION' | 'PAID' | 'CONFIRMED' | 'REJECTED';
+  paymentReference?: string;
+  rejectionReason?: string;
   
   // Clean Check-in & Session Flow (NO START OTP)
   checkedIn: boolean;
