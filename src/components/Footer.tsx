@@ -118,31 +118,9 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 border-t border-[#cec3ce]/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left text-[#596579] text-xs">
         <p>© 2026 Navratri Companion Technologies Pvt. Ltd. All rights reserved.</p>
-        <div className="flex items-center gap-3.5 flex-wrap justify-center font-medium">
-          <button onClick={() => onNavigate('legal-terms')} className="hover:text-[#311042] hover:underline">
-            Terms &amp; Conditions
-          </button>
-          <span>|</span>
-          <button onClick={() => onNavigate('legal-privacy')} className="hover:text-[#311042] hover:underline">
-            Privacy Policy
-          </button>
-          <span>|</span>
-          <button onClick={() => onNavigate('legal-safety')} className="hover:text-[#311042] hover:underline">
-            Safety &amp; Disclaimer
-          </button>
-          <span>|</span>
-          <button onClick={() => onNavigate('legal-cancellation')} className="hover:text-[#311042] hover:underline">
-            Cancellation &amp; Refund Policy
-          </button>
-          <span>|</span>
-          <button onClick={() => onNavigate('legal-community')} className="hover:text-[#311042] hover:underline">
-            Community Guidelines
-          </button>
-          <span>|</span>
-          <button onClick={() => onNavigate('legal-grievance')} className="hover:text-[#311042] hover:underline text-[#9b4500] font-bold">
-            Contact / Grievance Support
-          </button>
-        </div>
+        <p className="text-xs text-[#596579]">
+          Platonic festival accompaniment network compliant under Indian IT Act 2000.
+        </p>
       </div>
     </footer>
   );

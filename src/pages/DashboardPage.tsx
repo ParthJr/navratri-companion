@@ -347,16 +347,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       {/* Content */}
                       <div className="flex flex-col flex-grow gap-3 w-full">
                         <div>
-                          <span className="text-[11px] text-[#596579] uppercase tracking-wider font-semibold block">
+                          <span className="text-xs text-[#596579] uppercase tracking-wider font-semibold block">
                             {(activeUpcomingBooking.paymentStatus === 'PENDING_CONFIRMATION' || activeUpcomingBooking.status === 'pending' || activeUpcomingBooking.status === 'PENDING_PAYMENT_VERIFICATION')
                               ? 'Payment Pending — Waiting for Confirmation'
                               : activeUpcomingBooking.paymentStatus === 'REJECTED' || activeUpcomingBooking.status === 'cancelled'
                               ? 'Cancelled Experience'
                               : 'Upcoming Experience'}
                           </span>
-                          <h3 className="font-['Plus_Jakarta_Sans'] font-bold text-lg sm:text-xl text-[#12001f]">
+                          <h2 className="font-['Plus_Jakarta_Sans'] font-bold text-lg sm:text-xl text-[#12001f]">
                             Garba + Photos ({activeUpcomingBooking.duration}) with {activeUpcomingBooking.companionName} ({activeUpcomingBooking.companionAge})
-                          </h3>
+                          </h2>
                         </div>
 
                         {/* Metadata grid */}
@@ -367,7 +367,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           </div>
                           <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4 text-[#9b4500]" />
-                            <span>{activeUpcomingBooking.timeSlot}</span>
+                            <span className="normal-case font-medium">{activeUpcomingBooking.timeSlot}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-[#9b4500]" />
@@ -392,10 +392,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                               <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-spin" />
                               <div>
                                 <strong className="block text-amber-950 font-bold">Payment submitted — waiting for platform confirmation.</strong>
-                                <span className="text-amber-800 text-[11px]">Super Admin is reviewing your ₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} UPI transaction. Companion contact will unlock immediately upon verification.</span>
+                                <span className="text-amber-800 text-xs">Super Admin is reviewing your ₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} UPI transaction. Companion contact will unlock immediately upon verification.</span>
                               </div>
                             </div>
-                            <span className="font-mono text-[10px] bg-amber-200 text-amber-950 px-2.5 py-0.5 rounded-full font-black uppercase self-start sm:self-auto shrink-0">
+                            <span className="font-mono text-xs bg-amber-200 text-amber-950 px-2.5 py-1 rounded-full font-bold uppercase self-start sm:self-auto shrink-0 shadow-2xs">
                               PENDING CONFIRMATION
                             </span>
                           </div>
@@ -405,7 +405,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                               <Lock className="w-4 h-4 text-rose-600 shrink-0" />
                               <div>
                                 <strong className="block text-rose-950 font-bold">Payment could not be confirmed. Please contact support.</strong>
-                                <span className="text-rose-800 text-[11px] font-normal">If you were debited, click WhatsApp support with your payment reference.</span>
+                                <span className="text-rose-800 text-xs font-normal">If you were debited, click WhatsApp support with your payment reference.</span>
                               </div>
                             </div>
                             <a
@@ -514,16 +514,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           {activeUpcomingBooking.status !== 'cancelled' && activeUpcomingBooking.status !== 'completed' ? (
                             !activeUpcomingBooking.checkedIn ? (
                               <button
+                                type="button"
                                 onClick={() => setSelectedBookingForCheckIn(activeUpcomingBooking)}
-                                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#9b4500] text-white hover:bg-[#763300] flex items-center gap-2 transition-all shadow-xs cursor-pointer"
+                                className="btn-primary"
+                                aria-label="Confirm check-in with your companion"
                               >
-                                <ShieldCheck className="w-4 h-4" />
+                                <ShieldCheck className="w-4 h-4 text-emerald-400" />
                                 <span>Did you meet your companion? Check-In</span>
                               </button>
                             ) : (
                               <button
+                                type="button"
                                 onClick={() => setSelectedBookingForOtp(activeUpcomingBooking)}
-                                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#311042] text-white hover:bg-[#9b4500] flex items-center gap-2 transition-all shadow-xs cursor-pointer"
+                                className="btn-primary"
+                                aria-label={profile.role === 'companion' ? 'Verify Completion OTP & Complete session' : 'View Customer Completion OTP'}
                               >
                                 <CheckCircle2 className="w-4 h-4 text-[#fd8a42]" />
                                 <span>{profile.role === 'companion' ? 'Verify Completion OTP & Complete' : 'Customer Completion OTP'}</span>
@@ -535,18 +539,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             </span>
                           )}
 
-                          <div className="flex items-center gap-4 text-xs">
+                          <div className="flex items-center gap-2.5 text-xs">
                             <button
+                              type="button"
                               onClick={() => setSelectedBookingForReport(activeUpcomingBooking)}
-                              className="text-rose-600 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                              className="btn-outline"
+                              aria-label="Report a problem with this booking"
                             >
-                              <AlertCircle className="w-3.5 h-3.5" />
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
                               <span>Report Problem</span>
                             </button>
                             {activeUpcomingBooking.status !== 'completed' && activeUpcomingBooking.status !== 'cancelled' && (
                               <button
+                                type="button"
                                 onClick={() => setSelectedBookingForCancel(activeUpcomingBooking)}
-                                className="text-[#596579] hover:text-rose-600 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                                className="btn-danger-outline"
+                                aria-label="Cancel this booking"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
                                 <span>Cancel Booking</span>
@@ -1150,7 +1158,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <CheckCircle className="w-4 h-4 text-[#9b4500] shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-xs font-bold text-[#12001f]">Book an Experience, Not a Person</h4>
-                    <p className="text-[11px] text-[#596579] leading-relaxed">
+                    <p className="text-xs text-[#596579] leading-relaxed">
                       All passes are strictly for cultural dance accompaniment and festive photography.
                     </p>
                   </div>
@@ -1160,7 +1168,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <CheckCircle className="w-4 h-4 text-[#9b4500] shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-xs font-bold text-[#12001f]">Non-Sexual Interactions Only</h4>
-                    <p className="text-[11px] text-[#596579] leading-relaxed">
+                    <p className="text-xs text-[#596579] leading-relaxed">
                       Zero-tolerance policy for inappropriate behavior with instant permanent ban.
                     </p>
                   </div>
@@ -1170,7 +1178,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <CheckCircle className="w-4 h-4 text-[#9b4500] shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-xs font-bold text-[#12001f]">Public Meeting Places</h4>
-                    <p className="text-[11px] text-[#596579] leading-relaxed">
+                    <p className="text-xs text-[#596579] leading-relaxed">
                       Meet only at verified public grounds and festival venues.
                     </p>
                   </div>
@@ -1178,7 +1186,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
 
               <div className="pt-3 border-t border-[#cec3ce]/30 flex flex-col gap-2">
-                <span className="text-[11px] text-[#596579] uppercase font-bold tracking-wider">
+                <span className="text-xs text-[#596579] uppercase font-bold tracking-wider">
                   Need Immediate Assistance?
                 </span>
                 <button
