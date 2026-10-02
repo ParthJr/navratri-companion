@@ -25,21 +25,40 @@ export default async function handler(req: any, res: any) {
         companionId: companionId || undefined,
       });
 
-      // Role-based redaction: COMPANIONS must NEVER receive customer Completion OTP
+      // Access control & Role-based redaction:
+      // 1. Completion OTP: Only customer owner or admin may view OTP. Companions must NEVER receive it.
+      // 2. Companion Private Details (phone, UPI, etc.): Only unlocked if booking is CONFIRMED (PAID/CONFIRMED),
+      //    or if caller is admin, or if caller is the companion themselves.
       const sanitizedBookings = allBookings.map((b) => {
         const bCustId = (b.customerId || '').toLowerCase().trim();
+        const bCompId = (b.companionId || '').toLowerCase().trim();
 
-        // Customer who owns this booking can view their own completion OTP
+        // Customer who owns this booking
         const isCustomerOwner =
           !isCompanionCaller &&
           ((authUserId && authUserId === bCustId) ||
            (customerId && customerId.toLowerCase().trim() === bCustId));
 
+        const isCompanionOwner =
+          isCompanionCaller &&
+          ((authUserId && authUserId === bCompId) ||
+           (companionId && companionId.toLowerCase().trim() === bCompId));
+
         const canViewOtp = isAdmin || isCustomerOwner;
+
+        // Is booking confirmed by Super Admin?
+        const isConfirmedBooking =
+          (b.status === 'confirmed' || b.status === 'active' || b.status === 'completed') &&
+          (b.paymentStatus === 'CONFIRMED' || b.paymentStatus === 'PAID');
+
+        // Customer can only see companion contact after booking is CONFIRMED
+        const canViewCompanionContact = isAdmin || isCompanionOwner || (isCustomerOwner && isConfirmedBooking);
 
         return {
           ...b,
           completionOtp: canViewOtp ? b.completionOtp : undefined,
+          companionPhone: canViewCompanionContact ? b.companionPhone : undefined,
+          companionUpi: canViewCompanionContact ? b.companionUpi : undefined,
         };
       });
 
@@ -261,12 +280,20 @@ export default async function handler(req: any, res: any) {
       };
 
       const saved = await createBookingRecord(newBooking);
+
+      // Redact companion private details for customer response (pending confirmation)
+      const clientSafeBooking = {
+        ...saved,
+        companionPhone: undefined,
+        companionUpi: undefined,
+      };
+
       res.statusCode = 200;
       return res.end(
         JSON.stringify({
           success: true,
           message: 'Booking request created successfully. Platform Admin will verify payment.',
-          booking: saved,
+          booking: clientSafeBooking,
         })
       );
     } catch (err: any) {

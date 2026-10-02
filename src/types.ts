@@ -26,7 +26,7 @@ export interface Companion {
   skills: string[];
   inclusions: string[];
   preferredVenues: string[];
-  phone: string;
+  phone?: string;
 }
 
 export interface Booking {
@@ -36,7 +36,7 @@ export interface Booking {
   companionAge: number;
   companionCity: string;
   companionAvatar: string;
-  companionPhone: string;
+  companionPhone?: string;
   companionUpi?: string;
   guestName: string;
   guestPhone: string;

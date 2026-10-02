@@ -425,25 +425,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                                 <Lock className="w-4 h-4 text-[#9b4500]" />
                                 <span>Unlocked Companion Contacts (₹{activeUpcomingBooking.totalFee.toLocaleString('en-IN')} locked in escrow)</span>
                               </div>
-                              <span className="text-[11px] text-[#596579]">Direct coordinates unlocked for festival coordination.</span>
+                              <span className="text-xs text-[#596579]">Direct coordinates unlocked for festival coordination.</span>
                             </div>
                             <div className="flex items-center gap-2 w-full sm:w-auto">
-                              <a
-                                href={`tel:${activeUpcomingBooking.companionPhone}`}
-                                className="flex-1 sm:flex-none bg-[#311042] text-white px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-[#9b4500] transition-colors"
-                              >
-                                <Phone className="w-3.5 h-3.5" />
-                                <span>{activeUpcomingBooking.companionPhone}</span>
-                              </a>
-                              <a
-                                href={`https://wa.me/${activeUpcomingBooking.companionPhone.replace(/\D/g, '') || '918200564182'}?text=Hello%20${encodeURIComponent(activeUpcomingBooking.companionName)},%20I%20have%20booked%20our%20Navratri%20Garba%20companion%20session%20for%20${encodeURIComponent(activeUpcomingBooking.date)}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex-1 sm:flex-none bg-emerald-50 text-emerald-800 border border-emerald-300 px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-emerald-100 transition-colors"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>WhatsApp</span>
-                              </a>
+                              {activeUpcomingBooking.companionPhone ? (
+                                <>
+                                  <a
+                                    href={`tel:${activeUpcomingBooking.companionPhone}`}
+                                    className="flex-1 sm:flex-none bg-[#311042] text-white px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-[#9b4500] transition-colors"
+                                  >
+                                    <Phone className="w-3.5 h-3.5" />
+                                    <span>{activeUpcomingBooking.companionPhone}</span>
+                                  </a>
+                                  <a
+                                    href={`https://wa.me/${activeUpcomingBooking.companionPhone.replace(/\D/g, '')}?text=Hello%20${encodeURIComponent(activeUpcomingBooking.companionName)},%20I%20have%20booked%20our%20Navratri%20Garba%20companion%20session%20for%20${encodeURIComponent(activeUpcomingBooking.date)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex-1 sm:flex-none bg-emerald-50 text-emerald-800 border border-emerald-300 px-3.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-emerald-100 transition-colors"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>WhatsApp</span>
+                                  </a>
+                                </>
+                              ) : (
+                                <span className="text-xs text-[#596579] italic">Contact details unlocked on pass</span>
+                              )}
                             </div>
                           </div>
                         )}
