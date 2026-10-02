@@ -604,11 +604,22 @@ export default function App() {
       email: updated.email,
       phone: updated.phone,
       city: updated.city,
+      area: updated.area,
       age: updated.age ? parseInt(String(updated.age), 10) : undefined,
       bio: updated.bio,
       preferredGarbaStyle: updated.garbaStyle,
+      garbaStyle: updated.garbaStyle,
+      languages: updated.languages,
+      hourlyRate: updated.price2h ? parseInt(String(updated.price2h), 10) : undefined,
+      price2h: updated.price2h ? parseInt(String(updated.price2h), 10) : undefined,
+      price4h: updated.price4h ? parseInt(String(updated.price4h), 10) : undefined,
       avatarUrl: updated.selfieImage,
-    }).catch((err) => console.warn('Database profile save note:', err));
+    })
+      .then(() => {
+        // Refresh live marketplace companion list so changes reflect immediately
+        refreshCompanions();
+      })
+      .catch((err) => console.warn('Database profile save note:', err));
 
     setShowCreateProfileModal(false);
   };

@@ -82,10 +82,16 @@ export const CreateProfileModal: React.FC<CreateProfileModalProps> = ({
         name,
         email: currentProfile.email,
         phone: currentProfile.phone,
-        city: `${city}, ${area}`,
+        city: city,
+        area: area,
         age: parseInt(age, 10) || 23,
         bio,
         preferredGarbaStyle: garbaStyle,
+        garbaStyle: garbaStyle,
+        languages: languages,
+        hourlyRate: parseInt(price2h, 10) || 1200,
+        price2h: parseInt(price2h, 10) || 1200,
+        price4h: parseInt(price4h, 10) || 2400,
         avatarUrl: photoUrl,
       }).catch((err) => console.warn('DB profile save error:', err));
     }

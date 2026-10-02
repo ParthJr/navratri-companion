@@ -33,6 +33,7 @@ import { CompletionOtpModal } from '../components/CompletionOtpModal';
 import { ReportProblemModal } from '../components/ReportProblemModal';
 import { CancelBookingModal } from '../components/CancelBookingModal';
 import { EmergencySosModal } from '../components/EmergencySosModal';
+import { PhotoUpload } from '../components/PhotoUpload';
 import { useSuperAdmin } from '../super-admin/context/SuperAdminContext';
 import { generatePaymentSupportWhatsAppUrl } from '../utils/whatsapp';
 
@@ -77,6 +78,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [cityInput, setCityInput] = useState(profile.city);
   const [emergencyName, setEmergencyName] = useState(profile.emergencyContact);
   const [emergencyPhone, setEmergencyPhone] = useState(profile.emergencyPhone);
+  const [bioInput, setBioInput] = useState(profile.bio || '');
+  const [garbaStyleInput, setGarbaStyleInput] = useState(profile.garbaStyle || 'Traditional Dodhiyo & Teen Taal');
+  const [languagesInput, setLanguagesInput] = useState(profile.languages || 'Gujarati, Hindi, English');
+  const [price2hInput, setPrice2hInput] = useState(profile.price2h ? String(profile.price2h) : '1200');
+  const [price4hInput, setPrice4hInput] = useState(profile.price4h ? String(profile.price4h) : '2400');
+  const [photoUrlInput, setPhotoUrlInput] = useState(profile.selfieImage || '');
   const [showVerificationEmailModal, setShowVerificationEmailModal] = useState(false);
   const [emailResentToast, setEmailResentToast] = useState(false);
 
@@ -125,7 +132,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       phone: phoneInput,
       city: cityInput,
       emergencyContact: emergencyName,
-      emergencyPhone: emergencyPhone
+      emergencyPhone: emergencyPhone,
+      bio: bioInput,
+      garbaStyle: garbaStyleInput,
+      languages: languagesInput,
+      price2h: parseInt(price2hInput, 10) || 1200,
+      price4h: parseInt(price4hInput, 10) || 2400,
+      selfieImage: photoUrlInput || profile.selfieImage,
     });
     setProfileSuccessMsg(true);
     setTimeout(() => setProfileSuccessMsg(false), 3000);
@@ -942,6 +955,76 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       />
                     </div>
                   </div>
+
+                  {/* Companion Profile Details (Only displayed for Companion role) */}
+                  {profile.role === 'companion' && (
+                    <div className="pt-4 border-t border-[#cec3ce]/30 space-y-4">
+                      <div>
+                        <label className="text-xs font-semibold text-[#596579] block mb-1">Profile Photo</label>
+                        <PhotoUpload
+                          label="Profile Photo"
+                          value={photoUrlInput || null}
+                          onChange={(url) => setPhotoUrlInput(url || '')}
+                          helperText="Upload a clear photo to display on your public companion profile"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-[#596579] block mb-1">About Me / Bio</label>
+                        <textarea
+                          rows={3}
+                          value={bioInput}
+                          onChange={(e) => setBioInput(e.target.value)}
+                          placeholder="Tell potential clients about yourself and your Garba excitement..."
+                          className="w-full text-sm bg-slate-50 border border-[#cec3ce]/50 p-2.5 rounded-lg focus:ring-1 focus:ring-[#311042] focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-semibold text-[#596579] block mb-1">Garba Dance Style</label>
+                          <input
+                            type="text"
+                            value={garbaStyleInput}
+                            onChange={(e) => setGarbaStyleInput(e.target.value)}
+                            placeholder="e.g. Traditional 2-Taali & 3-Taali"
+                            className="w-full text-sm bg-slate-50 border border-[#cec3ce]/50 p-2.5 rounded-lg focus:ring-1 focus:ring-[#311042] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-[#596579] block mb-1">Languages Spoken</label>
+                          <input
+                            type="text"
+                            value={languagesInput}
+                            onChange={(e) => setLanguagesInput(e.target.value)}
+                            placeholder="e.g. Gujarati, Hindi, English"
+                            className="w-full text-sm bg-slate-50 border border-[#cec3ce]/50 p-2.5 rounded-lg focus:ring-1 focus:ring-[#311042] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-semibold text-[#596579] block mb-1">2-Hour Package Price (₹)</label>
+                          <input
+                            type="number"
+                            value={price2hInput}
+                            onChange={(e) => setPrice2hInput(e.target.value)}
+                            className="w-full text-sm bg-slate-50 border border-[#cec3ce]/50 p-2.5 rounded-lg focus:ring-1 focus:ring-[#311042] focus:outline-none font-bold text-[#9b4500]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-[#596579] block mb-1">4-Hour Package Price (₹)</label>
+                          <input
+                            type="number"
+                            value={price4hInput}
+                            onChange={(e) => setPrice4hInput(e.target.value)}
+                            className="w-full text-sm bg-slate-50 border border-[#cec3ce]/50 p-2.5 rounded-lg focus:ring-1 focus:ring-[#311042] focus:outline-none font-bold text-[#9b4500]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between pt-2 border-t border-[#cec3ce]/30">
                     {onLogout ? (

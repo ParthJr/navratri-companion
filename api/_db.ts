@@ -178,6 +178,7 @@ export interface UserProfileRecord {
   email: string;
   phone: string;
   city: string;
+  area?: string;
   age?: number;
   gender?: string;
   bio?: string;
@@ -187,6 +188,9 @@ export interface UserProfileRecord {
   preferredLocations?: string[];
   preferredGarbaStyle?: string;
   avatarUrl?: string;
+  hourlyRate?: number;
+  languages?: string;
+  garbaStyle?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -2194,6 +2198,23 @@ export async function getActiveCompanions(): Promise<any[]> {
     throw new Error(`Database error fetching companion listings: ${lastDbError || 'Query failed'}`);
   }
 
+  // Fetch latest profiles from Supabase to overlay freshest edited data
+  const profilesByUserId = new Map<string, any>();
+  if (supabase) {
+    try {
+      const { data: profileRows } = await supabase.from('user_profiles').select('*');
+      if (profileRows) {
+        for (const pr of profileRows) {
+          if (pr.user_id) {
+            profilesByUserId.set(pr.user_id.toLowerCase().trim(), pr);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Supabase getActiveCompanions profiles overlay warning]:', e?.message);
+    }
+  }
+
   // 5. Deduplicate by unique companion identifier / user / name
   const uniqueCompanions = new Map<string, any>();
   const seenKeys = new Set<string>();
@@ -2214,23 +2235,32 @@ export async function getActiveCompanions(): Promise<any[]> {
     if (cand.id != null) seenKeys.add(String(cand.id).toLowerCase().trim());
     if (cand.userId != null) seenKeys.add(String(cand.userId).toLowerCase().trim());
 
-    const hourly = Number(cand.hourlyRate) || 1200;
-    const price2h = hourly;
-    const price4h = Math.round(hourly * 1.8);
-    const photo =
-      cand.avatar ||
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400';
-    const bioText = cand.bio?.trim() || 'Passionate Garba dancer and friendly local Navratri partner.';
+    // Check if there is an updated profile in Supabase or in memory
+    const userKey = cand.userId ? String(cand.userId).toLowerCase().trim() : primaryKey;
+    const dbProfile = profilesByUserId.get(userKey) || storeMemory.profiles[userKey];
+
+    const effectiveName = (dbProfile?.name || cand.name || '').trim();
+    const effectiveBio = (dbProfile?.bio || cand.bio || '').trim();
+    const effectivePhoto = dbProfile?.avatar_url || dbProfile?.avatarUrl || cand.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400';
+    const effectiveCity = dbProfile?.city || cand.city || 'Ahmedabad';
+    const effectiveAge = dbProfile?.age ? Number(dbProfile.age) : (Number(cand.age) || 22);
+    const effectiveGarbaStyle = dbProfile?.preferred_garba_style || dbProfile?.garbaStyle || cand.garbaStyle;
+    const effectiveHourly = Number(cand.hourlyRate) || 1200;
+
+    const price2h = effectiveHourly;
+    const price4h = Math.round(effectiveHourly * 1.8);
+    const photo = effectivePhoto;
+    const bioText = effectiveBio || 'Passionate Garba dancer and friendly local Navratri partner.';
     const yearsExp = parseInt(String(cand.experienceYears || '2'), 10) || 2;
     const cityClean =
-      (cand.city || '').toLowerCase().includes('gandhinagar') ? 'Gandhinagar' : 'Ahmedabad';
+      effectiveCity.toLowerCase().includes('gandhinagar') ? 'Gandhinagar' : 'Ahmedabad';
 
     // Safe public projection - excludes sensitive PII (Aadhaar, passwords, private documents)
     const publicProfile = {
       id: cand.userId || cand.id,
       userId: cand.userId || cand.id,
-      name: cand.name.trim(),
-      age: Number(cand.age) || 22,
+      name: effectiveName,
+      age: effectiveAge,
       city: cityClean as 'Ahmedabad' | 'Gandhinagar',
       area: cand.area || (cityClean === 'Gandhinagar' ? 'Infocity / Sector 21' : 'Bodakdev / SG Highway'),
       rating: 4.9,
@@ -2252,7 +2282,7 @@ export async function getActiveCompanions(): Promise<any[]> {
       yearsExperience: yearsExp,
       responseRate: '99%',
       responseTime: 'Within 10 mins',
-      skills: cand.garbaStyle ? [cand.garbaStyle, ...defaultSkills.slice(0, 2)] : defaultSkills,
+      skills: effectiveGarbaStyle ? [effectiveGarbaStyle, ...defaultSkills.slice(0, 2)] : defaultSkills,
       inclusions: ['Festival Guidance', 'Cultural Orientation'],
       preferredVenues: defaultVenues,
       status: 'active',
@@ -2792,7 +2822,7 @@ export async function getUserProfile(userId: string): Promise<UserProfileRecord 
 export async function saveUserProfile(profile: UserProfileRecord): Promise<UserProfileRecord> {
   const supabase = getSupabaseClient();
 
-  const upsertPayload = {
+  const upsertPayload: any = {
     user_id: profile.userId,
     name: profile.name,
     email: profile.email,
@@ -2805,7 +2835,7 @@ export async function saveUserProfile(profile: UserProfileRecord): Promise<UserP
     emergency_contact_phone: profile.emergencyContactPhone || null,
     emergency_contact_relation: profile.emergencyContactRelation || null,
     preferred_locations: profile.preferredLocations || [],
-    preferred_garba_style: profile.preferredGarbaStyle || null,
+    preferred_garba_style: profile.preferredGarbaStyle || profile.garbaStyle || null,
     avatar_url: profile.avatarUrl || null,
     updated_at: new Date().toISOString(),
   };
@@ -2817,6 +2847,118 @@ export async function saveUserProfile(profile: UserProfileRecord): Promise<UserP
         .upsert(upsertPayload, { onConflict: 'user_id' });
     } catch (e: any) {
       console.warn(`[Supabase saveUserProfile Warning] ${e?.message}`);
+    }
+
+    // Simultaneously sync companion updates into 'users' and 'host_applications' tables
+    // so public listings, admin dashboards, and booking flows immediately reflect changes
+    try {
+      const userUpdatePayload: any = {
+        updated_at: new Date().toISOString(),
+      };
+      if (profile.name) userUpdatePayload.name = profile.name;
+      if (profile.email) userUpdatePayload.email = profile.email;
+      if (profile.phone) userUpdatePayload.phone = profile.phone;
+      if (profile.city) userUpdatePayload.city = profile.city;
+      if (profile.age != null) userUpdatePayload.age = Number(profile.age);
+      if (profile.bio != null) userUpdatePayload.bio = profile.bio;
+      if (profile.avatarUrl) {
+        userUpdatePayload.profile_photo = profile.avatarUrl;
+        userUpdatePayload.selfie_image = profile.avatarUrl;
+      }
+      if (profile.garbaStyle || profile.preferredGarbaStyle) {
+        userUpdatePayload.garba_style = profile.garbaStyle || profile.preferredGarbaStyle;
+      }
+      if (profile.languages) userUpdatePayload.languages = profile.languages;
+      if (profile.hourlyRate != null && !isNaN(Number(profile.hourlyRate))) {
+        userUpdatePayload.hourly_rate = Number(profile.hourlyRate);
+      }
+
+      await supabase
+        .from('users')
+        .update(userUpdatePayload)
+        .eq('user_id', profile.userId);
+    } catch (uErr: any) {
+      console.warn(`[Supabase saveUserProfile users sync warning] ${uErr?.message}`);
+    }
+
+    try {
+      const appUpdatePayload: any = {
+        updated_at: new Date().toISOString(),
+      };
+      if (profile.name) appUpdatePayload.name = profile.name;
+      if (profile.email) appUpdatePayload.email = profile.email;
+      if (profile.phone) appUpdatePayload.phone = profile.phone;
+      if (profile.city) appUpdatePayload.city = profile.city;
+      if (profile.area) {
+        appUpdatePayload.area = profile.area;
+        appUpdatePayload.locality_area = profile.area;
+      }
+      if (profile.age != null) appUpdatePayload.age = Number(profile.age);
+      if (profile.bio != null) appUpdatePayload.bio = profile.bio;
+      if (profile.avatarUrl) {
+        appUpdatePayload.profile_photo = profile.avatarUrl;
+        appUpdatePayload.avatar = profile.avatarUrl;
+      }
+      if (profile.garbaStyle || profile.preferredGarbaStyle) {
+        appUpdatePayload.garba_style = profile.garbaStyle || profile.preferredGarbaStyle;
+      }
+      if (profile.languages) appUpdatePayload.languages = profile.languages;
+      if (profile.hourlyRate != null && !isNaN(Number(profile.hourlyRate))) {
+        appUpdatePayload.hourly_rate = Number(profile.hourlyRate);
+      }
+
+      await supabase
+        .from('host_applications')
+        .update(appUpdatePayload)
+        .eq('user_id', profile.userId);
+    } catch (aErr: any) {
+      console.warn(`[Supabase saveUserProfile host_applications sync warning] ${aErr?.message}`);
+    }
+  }
+
+  // Update in-memory user record if present
+  const userKey = profile.userId.toLowerCase();
+  if (storeMemory.users[userKey]) {
+    const memUser = storeMemory.users[userKey];
+    if (profile.name) memUser.name = profile.name;
+    if (profile.email) memUser.email = profile.email;
+    if (profile.phone) memUser.phone = profile.phone;
+    if (profile.city) memUser.city = profile.city;
+    if (profile.age != null) memUser.age = Number(profile.age);
+    if (profile.bio != null) memUser.bio = profile.bio;
+    if (profile.avatarUrl) {
+      memUser.profilePhoto = profile.avatarUrl;
+      memUser.selfieImage = profile.avatarUrl;
+    }
+    if (profile.garbaStyle || profile.preferredGarbaStyle) {
+      memUser.garbaStyle = profile.garbaStyle || profile.preferredGarbaStyle;
+    }
+    if (profile.languages) memUser.languages = profile.languages;
+    if (profile.hourlyRate != null) memUser.hourlyRate = Number(profile.hourlyRate);
+  }
+
+  // Update in-memory application record if present
+  for (const app of Object.values(storeMemory.applications)) {
+    if ((app.userId && app.userId.toLowerCase() === userKey) || app.id === profile.userId) {
+      if (profile.name) app.name = profile.name;
+      if (profile.email) app.email = profile.email;
+      if (profile.phone) app.phone = profile.phone;
+      if (profile.city) app.city = profile.city;
+      if (profile.area) {
+        app.area = profile.area;
+        app.localityArea = profile.area;
+      }
+      if (profile.age != null) app.age = Number(profile.age);
+      if (profile.bio != null) app.bio = profile.bio;
+      if (profile.avatarUrl) {
+        app.profilePhoto = profile.avatarUrl;
+        app.avatar = profile.avatarUrl;
+      }
+      if (profile.garbaStyle || profile.preferredGarbaStyle) {
+        app.garbaStyle = profile.garbaStyle || profile.preferredGarbaStyle;
+      }
+      if (profile.languages) app.languages = profile.languages;
+      if (profile.hourlyRate != null) app.hourlyRate = Number(profile.hourlyRate);
     }
   }
 

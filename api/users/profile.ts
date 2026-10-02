@@ -79,6 +79,7 @@ export default async function handler(req: any, res: any) {
         email: body.email || '',
         phone: body.phone || '',
         city: body.city || 'Ahmedabad',
+        area: body.area,
         age: body.age ? parseInt(body.age, 10) : undefined,
         gender: body.gender,
         bio: body.bio || '',
@@ -86,7 +87,10 @@ export default async function handler(req: any, res: any) {
         emergencyContactPhone: body.emergencyContactPhone,
         emergencyContactRelation: body.emergencyContactRelation,
         preferredLocations: body.preferredLocations || [],
-        preferredGarbaStyle: body.preferredGarbaStyle,
+        preferredGarbaStyle: body.preferredGarbaStyle || body.garbaStyle,
+        garbaStyle: body.garbaStyle || body.preferredGarbaStyle,
+        languages: body.languages,
+        hourlyRate: body.hourlyRate ? Number(body.hourlyRate) : (body.price2h ? Number(body.price2h) : undefined),
         avatarUrl: body.avatarUrl,
       });
 
